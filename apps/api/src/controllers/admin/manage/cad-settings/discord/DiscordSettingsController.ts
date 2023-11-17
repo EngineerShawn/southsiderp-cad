@@ -1,10 +1,10 @@
 import process from "node:process";
 import { BodyParams, Context, Controller, UseBeforeEach } from "@tsed/common";
 import { ContentType, Get, Post } from "@tsed/schema";
-import { RESTGetAPIGuildRolesResult, Routes } from "discord-api-types/v10";
-import { IsAuth } from "middlewares/is-auth";
+import { type RESTGetAPIGuildRolesResult, Routes } from "discord-api-types/v10";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { prisma } from "lib/data/prisma";
-import { Rank, cad, DiscordRole } from "@prisma/client";
+import { type cad, type DiscordRole } from "@prisma/client";
 import { BadRequest } from "@tsed/exceptions";
 import { DISCORD_SETTINGS_SCHEMA } from "@snailycad/schemas";
 import { validateSchema } from "lib/data/validate-schema";
@@ -93,7 +93,6 @@ export class DiscordSettingsController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.rank === Rank.OWNER,
     permissions: [Permissions.ManageCADSettings],
   })
   async setRoleTypes(
@@ -116,11 +115,10 @@ export class DiscordSettingsController {
       courthouseRoles: data.courthouseRoles,
       towRoles: data.towRoles,
       taxiRoles: data.taxiRoles,
-      adminRoleId: data.adminRoleId,
       whitelistedRoleId: data.whitelistedRoleId,
     };
 
-    Object.values(rolesToCheck).map((roleId) => {
+    Object.values(rolesToCheck).forEach((roleId) => {
       if (Array.isArray(roleId) && roleId.length <= 0) return;
 
       if (roleId && !this.doesRoleExist(roles, roleId)) {
@@ -130,7 +128,6 @@ export class DiscordSettingsController {
 
     const createUpdateData = {
       guildId,
-      adminRoleId: data.adminRoleId ?? null,
       whitelistedRoleId: data.whitelistedRoleId ?? null,
       adminRolePermissions: data.adminRolePermissions ?? [],
       leoRolePermissions: data.leoRolePermissions ?? [],
@@ -158,50 +155,50 @@ export class DiscordSettingsController {
       },
     });
 
-    await Promise.all([
-      this.updateRoles({
+    await prisma.$transaction([
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.adminRoles,
         newRoles: (data.adminRoles as string[] | null) ?? [],
         type: "adminRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.leoRoles,
         newRoles: (data.leoRoles as string[] | null) ?? [],
         type: "leoRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.emsFdRoles,
         newRoles: (data.emsFdRoles as string[] | null) ?? [],
         type: "emsFdRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.leoSupervisorRoles,
         newRoles: (data.leoSupervisorRoles as string[] | null) ?? [],
         type: "leoSupervisorRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.towRoles,
         newRoles: (data.towRoles as string[] | null) ?? [],
         type: "towRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.dispatchRoles,
         newRoles: (data.dispatchRoles as string[] | null) ?? [],
         type: "dispatchRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.taxiRoles,
         newRoles: (data.taxiRoles as string[] | null) ?? [],
         type: "taxiRoles",
       }),
-      this.updateRoles({
+      ...this.updateRoles({
         discordRoleId: discordRoles.id,
         discordRoles: discordRoles.courthouseRoles,
         newRoles: (data.courthouseRoles as string[] | null) ?? [],
@@ -248,19 +245,18 @@ export class DiscordSettingsController {
     );
   }
 
-  private async updateRoles(options: UpdateRolesOptions) {
+  private updateRoles(options: UpdateRolesOptions) {
     const disconnectConnectArr = manyToManyHelper(
       options.discordRoles.map((v) => v.id),
       options.newRoles,
+      { showUpsert: false },
     );
 
-    await prisma.$transaction(
-      disconnectConnectArr.map((v) =>
-        prisma.discordRoles.update({
-          where: { id: options.discordRoleId },
-          data: { [options.type]: v },
-        }),
-      ),
+    return disconnectConnectArr.map((v) =>
+      prisma.discordRoles.update({
+        where: { id: options.discordRoleId },
+        data: { [options.type]: v },
+      }),
     );
   }
 }

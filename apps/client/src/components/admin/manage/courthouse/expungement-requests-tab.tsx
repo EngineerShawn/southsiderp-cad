@@ -1,18 +1,16 @@
-import { TabsContent } from "@radix-ui/react-tabs";
 import { ExpungementRequestStatus } from "@snailycad/types";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { useTranslations } from "next-intl";
-import { getTitles } from "components/courthouse/expungement-requests/RequestExpungement";
-import { Button } from "@snailycad/ui";
-import { FullDate } from "components/shared/FullDate";
-import { Status } from "components/shared/Status";
+import { getTitles } from "components/courthouse/expungement-requests/request-expungement-modal";
+import { Button, FullDate, Status, TabsContent } from "@snailycad/ui";
 import useFetch from "lib/useFetch";
 import type {
   GetManageExpungementRequests,
   PutManageExpungementRequests,
 } from "@snailycad/types/api";
 import { useInvalidateQuery } from "hooks/use-invalidate-query";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 
 interface Props {
   requests: GetManageExpungementRequests;
@@ -24,7 +22,7 @@ export function ExpungementRequestsTab({ requests: data }: Props) {
   const tableState = useTableState();
   const { state, execute } = useFetch();
   const { hasPermissions } = usePermission();
-  const hasManagePermissions = hasPermissions([Permissions.ManageExpungementRequests], true);
+  const hasManagePermissions = hasPermissions([Permissions.ManageExpungementRequests]);
   const { invalidateQuery } = useInvalidateQuery(["admin", "notifications"]);
 
   const asyncTable = useAsyncTable({
@@ -53,7 +51,12 @@ export function ExpungementRequestsTab({ requests: data }: Props) {
   }
 
   return (
-    <TabsContent value="expungement-requests">
+    <TabsContent
+      tabName={`${t("Management.MANAGE_EXPUNGEMENT_REQUESTS")} ${
+        asyncTable.isInitialLoading ? "" : ` (${asyncTable.pagination.totalDataCount})`
+      }`}
+      value="expungement-requests"
+    >
       <h3 className="font-semibold text-xl">{t("Management.MANAGE_EXPUNGEMENT_REQUESTS")}</h3>
 
       {asyncTable.noItemsAvailable ? (
@@ -64,6 +67,7 @@ export function ExpungementRequestsTab({ requests: data }: Props) {
           data={asyncTable.items.map((request) => ({
             id: request.id,
             citizen: `${request.citizen.name} ${request.citizen.surname}`,
+            description: <CallDescription data={{ description: request.description }} />,
             warrants: request.warrants.map((w) => w.description).join(", ") || common("none"),
             arrestReports:
               request.records
@@ -101,6 +105,7 @@ export function ExpungementRequestsTab({ requests: data }: Props) {
           }))}
           columns={[
             { header: t("Leo.citizen"), accessorKey: "citizen" },
+            { header: common("description"), accessorKey: "description" },
             { header: t("Leo.warrants"), accessorKey: "warrants" },
             { header: t("Leo.arrestReports"), accessorKey: "arrestReports" },
             { header: t("Leo.tickets"), accessorKey: "tickets" },

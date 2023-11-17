@@ -10,10 +10,9 @@ import { useModal } from "state/modalState";
 import { useHoverDirty } from "react-use";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
-import { FullDate } from "components/shared/FullDate";
+import { ModalIds } from "types/modal-ids";
 import { classNames } from "lib/classNames";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate } from "@snailycad/ui";
 import { Pencil, X } from "react-bootstrap-icons";
 import { AlertModal } from "components/modal/AlertModal";
 import type { Delete911CallEventByIdData, DeleteIncidentEventByIdData } from "@snailycad/types/api";
@@ -39,7 +38,7 @@ export function EventItem<T extends IncidentEvent | Call911Event>({
 }: EventItemProps<T>) {
   const [isEditable, setIsEditable] = React.useState(!disabled);
 
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const actionsRef = React.useRef<HTMLLIElement>(null);
   const isHovering = useHoverDirty(actionsRef);
   const t = useTranslations("Calls");
@@ -50,12 +49,12 @@ export function EventItem<T extends IncidentEvent | Call911Event>({
 
   function handleOpen() {
     setOpen(true);
-    openModal(ModalIds.AlertDeleteCallEvent);
+    modalState.openModal(ModalIds.AlertDeleteCallEvent);
   }
 
   function handleClose() {
     setOpen(false);
-    closeModal(ModalIds.AlertDeleteCallEvent);
+    modalState.closeModal(ModalIds.AlertDeleteCallEvent);
   }
 
   async function deleteEvent() {

@@ -3,34 +3,33 @@ import { CREATE_TICKET_SCHEMA, CREATE_TICKET_SCHEMA_BUSINESS } from "@snailycad/
 import {
   Loader,
   Button,
-  TextField,
   AsyncListSearchField,
   Item,
   TabList,
   TabsContent,
+  SwitchField,
+  FormRow,
+  FullDate,
 } from "@snailycad/ui";
 import { FormField } from "components/form/FormField";
-import type { SelectValue } from "components/form/Select";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { useValues } from "context/ValuesContext";
 import { Form, Formik, type FormikHelpers } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import { RecordType, type PenalCode, type Record, PaymentStatus } from "@snailycad/types";
 import { toastMessage } from "lib/toastMessage";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import type { PostRecordsData, PutRecordsByIdData } from "@snailycad/types/api";
-import { Toggle } from "components/form/Toggle";
 import { AddressPostalSelect } from "components/form/select/PostalSelect";
 import { CitizenSuggestionsField } from "components/shared/CitizenSuggestionsField";
-import { FullDate } from "components/shared/FullDate";
-
 import dynamic from "next/dynamic";
-import { FormRow } from "components/form/FormRow";
 import type { BusinessSearchResult } from "state/search/business-search-state";
+import { Editor, dataToSlate } from "components/editor/editor";
+import { useInvalidateQuery } from "hooks/use-invalidate-query";
 
 const ManageCourtEntryModal = dynamic(
   async () =>
@@ -45,17 +44,17 @@ const VehicleTab = dynamic(
 
 const SeizedItemsTab = dynamic(
   async () => (await import("./tabs/seized-items-tab/seized-items-tab")).SeizedItemsTab,
-  { ssr: false, loading: () => <Loader /> },
+  { ssr: false },
 );
 
 const ViolationsTab = dynamic(
   async () => (await import("./tabs/violations-tab/violations-tab")).ViolationsTab,
-  { loading: () => <Loader /> },
+  { ssr: false },
 );
 
 const ConnectionsTab = dynamic(
   async () => (await import("./tabs/connections-tab/connections-tab")).ConnectionsTab,
-  { ssr: false, loading: () => <Loader /> },
+  { ssr: false },
 );
 
 interface Props {
@@ -75,15 +74,84 @@ interface Props {
   onClose?(): void;
 }
 
+interface CreateInitialRecordValuesOptions {
+  t: ReturnType<typeof useTranslations<"Leo">>;
+  type: RecordType;
+  record?: Record | null;
+  penalCodes: PenalCode[];
+  isLeoBailEnabled: boolean;
+  payload: {
+    citizenId?: string;
+    citizenName?: string;
+    businessId?: string;
+    businessName?: string;
+  } | null;
+}
+
+export function createInitialRecordValues(options: CreateInitialRecordValuesOptions) {
+  return {
+    type: options.type,
+    citizenId: options.record?.citizenId ?? options.payload?.citizenId ?? "",
+    citizenName: options.payload?.citizenName ?? "",
+
+    businessId: options.record?.businessId ?? options.payload?.businessId ?? "",
+    businessName: options.payload?.businessName ?? "",
+
+    violations: (options.record?.violations ?? []).map((v) => {
+      return {
+        label: v.penalCode?.title ?? options.t("deletedPenalCode"),
+        value: {
+          ...v.penalCode,
+          fine: { enabled: Boolean(v.fine), value: v.fine },
+          counts: { enabled: true, value: v.counts },
+          jailTime: { enabled: Boolean(v.jailTime), value: v.jailTime },
+          communityService: { enabled: Boolean(v.communityService), value: v.communityService },
+          bail: {
+            enabled: options.isLeoBailEnabled ? Boolean(v.jailTime) : false,
+            value: v.bail,
+          },
+        },
+      };
+    }),
+    address: options.record?.address ?? "",
+    postal: options.record?.postal ?? "",
+    notes: options.record?.notes ?? "",
+    descriptionData: dataToSlate({
+      description: options.record?.notes,
+      descriptionData: options.record?.descriptionData,
+    }),
+    seizedItems: options.record?.seizedItems ?? [],
+    paymentStatus: options.record?.paymentStatus ?? null,
+    courtEntry: options.record?.courtEntry ?? null,
+
+    plateOrVin: options.record?.vehicle?.plate ?? options.record?.vehiclePlate ?? "",
+    plateOrVinSearch: options.record?.vehicle?.plate ?? options.record?.vehiclePlate ?? "",
+    vehicleId: options.record?.vehicleId ?? null,
+    vehicleModel:
+      options.record?.vehicle?.model.value.value ?? options.record?.vehicleModel ?? null,
+    vehicleColor: options.record?.vehicle?.color ?? options.record?.vehicleColor ?? null,
+    vehiclePaceType: options.record?.vehiclePaceType ?? null,
+    vehicleSpeed: options.record?.vehicleSpeed ?? null,
+    speedLimit: options.record?.speedLimit ?? null,
+
+    call911Id: options.record?.call911Id ?? null,
+    call911CaseNumber: options.record?.call911?.caseNumber
+      ? `#${options.record.call911.caseNumber}`
+      : null,
+    incidentId: options.record?.incidentId ?? null,
+  };
+}
+
 export function ManageRecordModal(props: Props) {
   const [isBusinessRecord, setIsBusinessRecord] = React.useState(
     Boolean(props.record?.businessId && !props.record.citizenId),
   );
-  const { isOpen, closeModal, openModal, getPayload } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const tCourt = useTranslations("Courthouse");
   const { LEO_BAIL } = useFeatureEnabled();
+  const { invalidateQuery } = useInvalidateQuery(["officer", "notifications"]);
 
   React.useEffect(() => {
     setIsBusinessRecord(Boolean(props.record?.businessId && !props.record.citizenId));
@@ -119,7 +187,7 @@ export function ManageRecordModal(props: Props) {
 
   function handleClose() {
     props.onClose?.();
-    closeModal(data[props.type].id);
+    modalState.closeModal(data[props.type].id);
   }
 
   async function onSubmit(
@@ -137,6 +205,7 @@ export function ManageRecordModal(props: Props) {
         jailTime: value.jailTime?.enabled ? value.jailTime?.value : null,
         fine: value.fine?.enabled ? value.fine?.value : null,
         counts: value.counts?.value ?? null,
+        communityService: value.communityService?.enabled ? value.communityService?.value : null,
       })),
     };
 
@@ -181,11 +250,12 @@ export function ManageRecordModal(props: Props) {
 
         props.onCreate?.(json);
         handleClose();
+        await invalidateQuery();
       }
     }
   }
 
-  const payload = getPayload<{
+  const payload = modalState.getPayload<{
     citizenId?: string;
     citizenName?: string;
     businessId?: string;
@@ -194,54 +264,20 @@ export function ManageRecordModal(props: Props) {
   const schema = isBusinessRecord ? CREATE_TICKET_SCHEMA_BUSINESS : CREATE_TICKET_SCHEMA;
   const validate = handleValidate(schema);
 
-  const INITIAL_VALUES = {
+  const INITIAL_VALUES = createInitialRecordValues({
+    t,
     type: props.type,
-    citizenId: props.record?.citizenId ?? payload?.citizenId ?? "",
-    citizenName: payload?.citizenName ?? "",
-
-    businessId: props.record?.businessId ?? payload?.businessId ?? "",
-    businessName: payload?.businessName ?? "",
-
-    violations:
-      props.record?.violations.map((v) => {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        const penalCode = v.penalCode ?? penalCodes.find((p) => p.id === v.penalCodeId);
-
-        return {
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          label: penalCode?.title,
-          value: {
-            key: v.penalCodeId,
-            ...penalCode,
-            fine: { enabled: !!v.fine, value: v.fine ?? undefined },
-            counts: { enabled: true, value: v.counts ?? undefined },
-            jailTime: { enabled: !!v.jailTime, value: v.jailTime ?? undefined },
-            bail: { enabled: LEO_BAIL ? !!v.jailTime : false, value: v.bail ?? undefined },
-          },
-        };
-      }) ?? ([] as SelectValue<PenalCode>[]),
-    address: props.record?.address ?? "",
-    postal: props.record?.postal ?? "",
-    notes: props.record?.notes ?? "",
-    seizedItems: props.record?.seizedItems ?? [],
-    paymentStatus: props.record?.paymentStatus ?? null,
-    courtEntry: props.record?.courtEntry ?? null,
-
-    plateOrVin: props.record?.vehicle?.plate ?? props.record?.vehiclePlate ?? "",
-    plateOrVinSearch: props.record?.vehicle?.plate ?? props.record?.vehiclePlate ?? "",
-    vehicleId: props.record?.vehicleId ?? null,
-    vehicleModel: props.record?.vehicle?.model.value.value ?? props.record?.vehicleModel ?? null,
-    vehicleColor: props.record?.vehicle?.color ?? props.record?.vehicleColor ?? null,
-
-    call911Id: props.record?.call911Id ?? null,
-    incidentId: props.record?.incidentId ?? null,
-  };
+    record: props.record,
+    penalCodes,
+    isLeoBailEnabled: LEO_BAIL,
+    payload,
+  });
 
   return (
     <Modal
       title={t(data[props.type].title)}
       onClose={handleClose}
-      isOpen={isOpen(data[props.type].id)}
+      isOpen={modalState.isOpen(data[props.type].id)}
       className="w-[800px]"
     >
       <Formik
@@ -253,28 +289,33 @@ export function ManageRecordModal(props: Props) {
         {({ setFieldValue, setValues, errors, values, isValid }) => (
           <Form autoComplete="off">
             <TabList
+              defaultValue="general-information-tab"
+              queryState={false}
               tabs={[
-                { name: "General Information", value: "general-information-tab" },
-                { name: "Violations", value: "violations-tab" },
-                { name: "Seized Items", value: "seized-items-tab" },
-                { name: "Vehicle Information", value: "vehicle-tab" },
-                { name: "Connections", value: "connections-tab" },
+                { name: t("generalInformation"), value: "general-information-tab" },
+                { name: t("violations"), value: "violations-tab" },
+                { name: t("seizedItems"), value: "seized-items-tab" },
+                { name: t("vehicleInformation"), value: "vehicle-tab" },
+                { name: t("connections"), value: "connections-tab" },
               ]}
             >
               <TabsContent value="general-information-tab">
                 {props.hideCitizenField ? null : (
-                  <FormRow flexLike>
+                  <FormRow useFlex>
                     {isBusinessRecord ? (
                       <AsyncListSearchField<BusinessSearchResult>
                         className="w-full"
                         autoFocus
-                        isDisabled={props.isReadOnly || !!props.record}
-                        setValues={({ localValue, node }) => {
-                          const labelValue =
-                            typeof localValue !== "undefined" ? { businessName: localValue } : {};
-                          const valueField = node ? { businessId: node.key as string } : {};
-
-                          setValues({ ...values, ...labelValue, ...valueField });
+                        isDisabled={props.isReadOnly || Boolean(props.record)}
+                        onInputChange={(value) => setFieldValue("businessName", value)}
+                        onSelectionChange={(node) => {
+                          if (node) {
+                            setValues({
+                              ...values,
+                              businessName: node.value?.name ?? node.textValue,
+                              businessId: node.key as string,
+                            });
+                          }
                         }}
                         localValue={values.businessName}
                         errorMessage={errors.businessId}
@@ -298,13 +339,13 @@ export function ManageRecordModal(props: Props) {
                         autoFocus
                         fromAuthUserOnly={false}
                         label={t("citizen")}
-                        isDisabled={props.isReadOnly || !!props.record}
+                        isDisabled={props.isReadOnly || Boolean(props.record)}
                         labelFieldName="citizenName"
                         valueFieldName="citizenId"
                       />
                     )}
                     <Button
-                      isDisabled={props.isReadOnly || !!props.record}
+                      isDisabled={props.isReadOnly || Boolean(props.record)}
                       onPress={() => setIsBusinessRecord((prev) => !prev)}
                       className="min-w-fit h-[39px] mt-7"
                     >
@@ -320,7 +361,7 @@ export function ManageRecordModal(props: Props) {
                   <Button
                     className="absolute right-0 top-0"
                     type="button"
-                    onPress={() => openModal(ModalIds.ManageCourtEntry)}
+                    onPress={() => modalState.openModal(ModalIds.ManageCourtEntry)}
                   >
                     {tCourt("manageCourtEntry")}
                   </Button>
@@ -334,30 +375,25 @@ export function ManageRecordModal(props: Props) {
                     : "None"}
                 </FormField>
 
-                <TextField
-                  isTextarea
-                  isOptional
-                  isDisabled={props.isReadOnly}
-                  errorMessage={errors.notes}
-                  label={t("notes")}
-                  value={values.notes}
-                  name="notes"
-                  onChange={(value) => setFieldValue("notes", value)}
-                />
-
-                <FormField optional errorMessage={errors.paymentStatus} label={t("recordPaid")}>
-                  <Toggle
-                    disabled={props.isReadOnly}
-                    value={values.paymentStatus === PaymentStatus.PAID}
-                    name="paymentStatus"
-                    onCheckedChange={(event) => {
-                      setFieldValue(
-                        "paymentStatus",
-                        event.target.value ? PaymentStatus.PAID : PaymentStatus.UNPAID,
-                      );
-                    }}
+                <FormField optional label={t("notes")} errorMessage={errors.notes}>
+                  <Editor
+                    value={values.descriptionData}
+                    onChange={(v) => setFieldValue("descriptionData", v)}
                   />
                 </FormField>
+
+                <SwitchField
+                  isDisabled={props.isReadOnly}
+                  isSelected={values.paymentStatus === PaymentStatus.PAID}
+                  onChange={(isSelected) => {
+                    setFieldValue(
+                      "paymentStatus",
+                      isSelected ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+                    );
+                  }}
+                >
+                  {t("recordPaid")}
+                </SwitchField>
               </TabsContent>
 
               <SeizedItemsTab isReadOnly={props.isReadOnly} />
@@ -384,7 +420,7 @@ export function ManageRecordModal(props: Props) {
 
             <ManageCourtEntryModal
               submitHandler={(values) => {
-                closeModal(ModalIds.ManageCourtEntry);
+                modalState.closeModal(ModalIds.ManageCourtEntry);
                 setFieldValue("courtEntry", values);
               }}
               courtEntry={values.courtEntry}

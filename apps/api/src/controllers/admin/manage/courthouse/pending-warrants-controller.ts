@@ -1,15 +1,16 @@
-import { Rank, Warrant, WarrantStatus, WhitelistStatus } from "@prisma/client";
+import { type Warrant, WarrantStatus, WhitelistStatus } from "@prisma/client";
 import { Controller } from "@tsed/di";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { ContentType, Description, Get, Put } from "@tsed/schema";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import type * as APITypes from "@snailycad/types/api";
 import { assignedOfficersInclude } from "controllers/record/records-controller";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { leoProperties } from "utils/leo/includes";
+
 import { officerOrDeputyToUnit } from "lib/leo/officerOrDeputyToUnit";
 import { AuditLogActionType } from "@snailycad/audit-logger";
 import { createAuditLogEntry } from "@snailycad/audit-logger/server";
@@ -21,7 +22,6 @@ export class AdminManageWarrantsController {
   @Get("/")
   @Description("Get all pending warrants")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManagePendingWarrants],
   })
   async getPendingWarrants(): Promise<APITypes.GetManagePendingWarrants> {
@@ -46,7 +46,6 @@ export class AdminManageWarrantsController {
   @Put("/:id")
   @Description("Sign a warrant as active.")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManagePendingWarrants],
   })
   async acceptOrDeclineNameChangeRequest(

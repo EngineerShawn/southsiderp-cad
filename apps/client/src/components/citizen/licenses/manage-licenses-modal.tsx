@@ -3,8 +3,7 @@ import { useTranslations } from "use-intl";
 import { LICENSE_SCHEMA } from "@snailycad/schemas";
 import { useModal } from "state/modalState";
 import { Modal } from "components/modal/Modal";
-import { ModalIds } from "types/ModalIds";
-import type { SelectValue } from "components/form/Select";
+import { ModalIds } from "types/modal-ids";
 import { Button, Loader } from "@snailycad/ui";
 import { handleValidate } from "lib/handleValidate";
 import type { Citizen, SuspendedCitizenLicenses } from "@snailycad/types";
@@ -23,12 +22,17 @@ export interface LicenseInitialValues {
   pilotLicense: string | null;
   weaponLicense: string | null;
   waterLicense: string | null;
+  huntingLicense: string | null;
+  fishingLicense: string | null;
   suspended: Omit<SuspendedCitizenLicenses, "id">;
 
-  driversLicenseCategory: SelectValue[] | null;
-  pilotLicenseCategory: SelectValue[] | null;
-  waterLicenseCategory: SelectValue[] | null;
-  firearmLicenseCategory: SelectValue[] | null;
+  driversLicenseCategory: string[];
+  pilotLicenseCategory: string[];
+  waterLicenseCategory: string[];
+  firearmLicenseCategory: string[];
+  huntingLicenseCategory: string[];
+  fishingLicenseCategory: string[];
+  otherLicenseCategory: string[];
 }
 
 export function ManageLicensesModal({
@@ -38,7 +42,7 @@ export function ManageLicensesModal({
   allowRemoval = true,
   onSubmit,
 }: Props) {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Citizen");
 
@@ -48,20 +52,20 @@ export function ManageLicensesModal({
   return (
     <Modal
       title={t("manageLicenses")}
-      isOpen={isOpen(ModalIds.ManageLicenses)}
-      onClose={() => closeModal(ModalIds.ManageLicenses)}
+      isOpen={modalState.isOpen(ModalIds.ManageLicenses)}
+      onClose={() => modalState.closeModal(ModalIds.ManageLicenses)}
       className="w-[750px]"
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
         {({ isValid }) => (
           <>
-            <ManageLicensesFormFields flexType="row" allowRemoval={allowRemoval} isLeo={isLeo} />
+            <ManageLicensesFormFields allowRemoval={allowRemoval} isLeo={isLeo} />
 
             <Form>
               <footer className="flex justify-end mt-5">
                 <Button
                   type="reset"
-                  onPress={() => closeModal(ModalIds.ManageLicenses)}
+                  onPress={() => modalState.closeModal(ModalIds.ManageLicenses)}
                   variant="cancel"
                 >
                   {common("cancel")}

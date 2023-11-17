@@ -6,16 +6,17 @@ import { useTranslations } from "use-intl";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
 import { TabList } from "@snailycad/ui";
-import { ExpungementRequestsTab } from "components/courthouse/expungement-requests/ExpungementRequestsTab";
-import { NameChangeRequestTab } from "components/courthouse/name-change/NameChangeRequestTab";
+import { ExpungementRequestsTab } from "components/courthouse/expungement-requests/expungement-requests-tab";
+import { NameChangeRequestTab } from "components/courthouse/name-change/name-change-requests-tab";
 import { CourtEntriesTab } from "components/courthouse/court-entries/court-entries-tab";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { CourthousePostsTab } from "components/courthouse/courthouse-posts/CourthousePostsTab";
+import { CourthousePostsTab } from "components/courthouse/courthouse-posts/courthouse-posts-tab";
 import type { GetExpungementRequestsData, GetNameChangeRequestsData } from "@snailycad/types/api";
 import Link from "next/link";
 import { BoxArrowUpRight } from "react-bootstrap-icons";
 import { defaultPermissions } from "@snailycad/permissions";
+import { CourthouseType } from "@snailycad/types";
 
 interface Props {
   requests: GetExpungementRequestsData;
@@ -24,19 +25,25 @@ interface Props {
 
 export default function Courthouse(props: Props) {
   const t = useTranslations("Courthouse");
-  const { COURTHOUSE_POSTS } = useFeatureEnabled();
+  const { COURTHOUSE_POSTS, options } = useFeatureEnabled();
+
   const { hasPermissions } = usePermission();
-  const hasEntriesPerms = hasPermissions([Permissions.Leo], (u) => u.isLeo);
+  const hasEntriesPerms = hasPermissions([Permissions.Leo]);
+  const hasCourthouseAdminPerms = hasPermissions(defaultPermissions.defaultCourthousePermissions);
+  const enabledTypes = options.COURTHOUSE ?? [];
 
-  const hasCourthouseAdminPerms = hasPermissions(
-    defaultPermissions.defaultCourthousePermissions,
-    (u) => u.isSupervisor,
-  );
+  const expungementRequestsEnabled = enabledTypes.includes(CourthouseType.EXPUNGEMENT_REQUEST);
+  const nameChangeRequestsEnabled = enabledTypes.includes(CourthouseType.NAME_CHANGE_REQUEST);
 
-  const TABS = [
-    { name: t("expungementRequests"), value: "expungementRequestsTab" },
-    { name: t("nameChangeRequests"), value: "nameChangeRequestsTab" },
-  ];
+  const TABS = [];
+
+  if (expungementRequestsEnabled) {
+    TABS.push({ name: t("expungementRequests"), value: "expungementRequestsTab" });
+  }
+
+  if (nameChangeRequestsEnabled) {
+    TABS.push({ name: t("nameChangeRequests"), value: "nameChangeRequestsTab" });
+  }
 
   if (hasEntriesPerms) {
     TABS[2] = { name: t("courtEntries"), value: "courtEntriesTab" };

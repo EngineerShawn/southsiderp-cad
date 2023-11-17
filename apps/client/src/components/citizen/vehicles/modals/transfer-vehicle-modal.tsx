@@ -1,12 +1,19 @@
-import { Loader, Button, TextField } from "@snailycad/ui";
+import {
+  Loader,
+  Button,
+  TextField,
+  FormRow,
+  SwitchField,
+  AsyncListSearchField,
+  Item,
+} from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "use-intl";
-import type { RegisteredVehicle } from "@snailycad/types";
-import { FormRow } from "components/form/FormRow";
-import { ModalIds } from "types/ModalIds";
+import type { Business, RegisteredVehicle } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
 import { handleValidate } from "lib/handleValidate";
 import { TRANSFER_VEHICLE_SCHEMA } from "@snailycad/schemas";
 import { CitizenSuggestionsField } from "components/shared/CitizenSuggestionsField";
@@ -18,7 +25,7 @@ interface Props {
 }
 
 export function TransferVehicleModal({ onTransfer, vehicle }: Props) {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Vehicles");
   const { state, execute } = useFetch();
@@ -32,12 +39,16 @@ export function TransferVehicleModal({ onTransfer, vehicle }: Props) {
 
     if (json.id) {
       onTransfer?.({ ...vehicle, ...json });
-      closeModal(ModalIds.TransferVehicle);
+      modalState.closeModal(ModalIds.TransferVehicle);
     }
   }
 
   const validate = handleValidate(TRANSFER_VEHICLE_SCHEMA);
   const INITIAL_VALUES = {
+    transferType: "citizen" as "citizen" | "business",
+    businessName: "",
+    businessId: "",
+
     ownerId: "",
     name: "",
   };
@@ -45,37 +56,79 @@ export function TransferVehicleModal({ onTransfer, vehicle }: Props) {
   return (
     <Modal
       title={t("transferVehicle")}
-      onClose={() => closeModal(ModalIds.TransferVehicle)}
-      isOpen={isOpen(ModalIds.TransferVehicle)}
+      onClose={() => modalState.closeModal(ModalIds.TransferVehicle)}
+      isOpen={modalState.isOpen(ModalIds.TransferVehicle)}
       className="w-[750px]"
     >
       <Formik validate={validate} initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ isValid }) => (
+        {({ isValid, values, errors, setValues, setFieldValue }) => (
           <Form>
             <p className="my-2 mb-5">
-              {t("transferVehicleInfo", {
+              {t.rich("transferVehicleInfo", {
                 model: vehicle.model.value.value,
+                span: (children) => <span className="font-medium">{children}</span>,
               })}
             </p>
+
+            <SwitchField
+              onChange={(isSelected) =>
+                setFieldValue("transferType", isSelected ? "business" : "citizen")
+              }
+            >
+              {t("transferToBusiness")}
+            </SwitchField>
 
             <FormRow>
               <TextField label={t("plate")} isDisabled defaultValue={vehicle.plate} />
               <TextField label={t("model")} isDisabled defaultValue={vehicle.model.value.value} />
             </FormRow>
 
-            <CitizenSuggestionsField
-              autoFocus
-              allowsCustomValue
-              label={t("owner")}
-              fromAuthUserOnly={false}
-              labelFieldName="name"
-              valueFieldName="ownerId"
-            />
+            {values.transferType === "business" ? (
+              <AsyncListSearchField<Business>
+                className="w-full"
+                allowsCustomValue
+                onInputChange={(value) => setFieldValue("businessName", value)}
+                onSelectionChange={(node) => {
+                  if (node) {
+                    setValues({
+                      ...values,
+                      businessName: node.value?.name ?? node.textValue,
+                      businessId: node.key as string,
+                    });
+                  }
+                }}
+                localValue={values.businessName}
+                errorMessage={errors.businessId}
+                label="Business"
+                selectedKey={values.businessId}
+                fetchOptions={{
+                  apiPath: (query) => `/businesses/search?query=${query}`,
+                  filterTextRequired: true,
+                }}
+              >
+                {(item) => {
+                  return (
+                    <Item key={item.id} textValue={item.name}>
+                      {item.name}
+                    </Item>
+                  );
+                }}
+              </AsyncListSearchField>
+            ) : (
+              <CitizenSuggestionsField
+                autoFocus
+                allowsCustomValue
+                label={t("owner")}
+                fromAuthUserOnly={false}
+                labelFieldName="name"
+                valueFieldName="ownerId"
+              />
+            )}
 
             <footer className="mt-5 flex justify-end">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.TransferVehicle)}
+                onPress={() => modalState.closeModal(ModalIds.TransferVehicle)}
                 variant="cancel"
               >
                 {common("cancel")}

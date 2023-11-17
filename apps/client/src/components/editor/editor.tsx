@@ -1,27 +1,35 @@
+import {
+  type SlateEditor,
+  type SlateElements,
+  type Text,
+  slateDataToString,
+} from "@snailycad/utils/editor";
 import * as React from "react";
-import { BaseEditor, Editor as _Editor, Node as SlateNode, Descendant, createEditor } from "slate";
+import {
+  Editor as _Editor,
+  Node as SlateNode,
+  type Descendant,
+  createEditor,
+  Element as SlateElement,
+} from "slate";
 import {
   Editable,
   ReactEditor,
-  RenderElementProps,
-  RenderLeafProps,
+  type RenderElementProps,
+  type RenderLeafProps,
   Slate,
   withReact,
 } from "slate-react";
-import { type HistoryEditor, withHistory } from "slate-history";
+import { withHistory } from "slate-history";
 import { Toolbar } from "./toolbar";
 import { toggleMark } from "lib/editor/utils";
 import isHotkey from "is-hotkey";
 import { SHORTCUTS, withShortcuts } from "lib/editor/withShortcuts";
 import { withChecklists } from "lib/editor/withChecklists";
-import type { SlateElements, Text } from "./types";
 import { classNames } from "lib/classNames";
-import { dataToString } from "lib/editor/dataToString";
 import { useTranslations } from "use-intl";
 import { EditorElement } from "./elements/element";
 import { EditorLeaf } from "./elements/leaf";
-
-export type SlateEditor = BaseEditor & ReactEditor & HistoryEditor;
 
 declare module "slate" {
   interface CustomTypes {
@@ -67,7 +75,7 @@ export function Editor(props: EditorProps) {
     [],
   );
   const isEmpty = React.useMemo(() => {
-    return dataToString(props.value)?.trim() === "";
+    return slateDataToString(props.value)?.trim() === "";
   }, [props.value]);
 
   function handleChange(value: Descendant[]) {
@@ -91,7 +99,7 @@ export function Editor(props: EditorProps) {
 
         const blockEntry = _Editor.above(editor, {
           at: path,
-          match: (n) => _Editor.isBlock(editor, n as any),
+          match: (n) => SlateElement.isElement(n) && _Editor.isBlock(editor, n),
         });
         if (!blockEntry) {
           return false;
@@ -124,15 +132,9 @@ export function Editor(props: EditorProps) {
     >
       <Slate
         editor={editor}
-        value={props.value as Descendant[]}
-        onChange={(value) => {
-          const isAstChange = editor.operations.some(
-            (operation) => operation.type !== "set_selection",
-          );
-
-          if (isAstChange) {
-            handleChange(value);
-          }
+        initialValue={props.value as Descendant[]}
+        onValueChange={(value) => {
+          handleChange(value);
         }}
       >
         {props.isReadonly ? null : <Toolbar />}
@@ -144,7 +146,8 @@ export function Editor(props: EditorProps) {
           renderLeaf={renderLeaf}
           renderElement={renderElement}
           className={classNames(
-            "w-full bg-transparent disabled:cursor-not-allowed disabled:opacity-80 py-1.5",
+            "w-full bg-transparent disabled:cursor-not-allowed disabled:opacity-80 outline-none",
+            props.value.length <= 3 ? "pb-10" : "py-1.5",
             props.truncate && "!flex",
             props.isReadonly ? "px-0" : "px-2",
           )}

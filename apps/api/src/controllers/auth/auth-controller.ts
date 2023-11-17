@@ -1,15 +1,22 @@
-import { Controller, BodyParams, Post, Res, Response } from "@tsed/common";
+import { Controller, BodyParams, Post, Res, type Response } from "@tsed/common";
 import { hashSync, genSaltSync, compareSync } from "bcrypt";
 import { BadRequest } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { findOrCreateCAD, isFeatureEnabled } from "lib/cad";
+import { findOrCreateCAD, isFeatureEnabled } from "lib/upsert-cad";
 import { REGISTER_SCHEMA, AUTH_SCHEMA } from "@snailycad/schemas";
 import { validateSchema } from "lib/data/validate-schema";
 import { ExtendedNotFound } from "src/exceptions/extended-not-found";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { validateUser2FA } from "lib/auth/2fa";
 import { ContentType, Description, Returns } from "@tsed/schema";
-import { User, WhitelistStatus, Rank, AutoSetUserProperties, cad, Feature } from "@prisma/client";
+import {
+  type User,
+  WhitelistStatus,
+  Rank,
+  type AutoSetUserProperties,
+  type cad,
+  Feature,
+} from "@prisma/client";
 import { defaultPermissions, Permissions } from "@snailycad/permissions";
 import { setUserPreferencesCookies } from "lib/auth/setUserPreferencesCookies";
 import type * as APITypes from "@snailycad/types/api";
@@ -17,6 +24,7 @@ import { setUserTokenCookies } from "lib/auth/setUserTokenCookies";
 import { validateGoogleCaptcha } from "lib/auth/validate-google-captcha";
 import { validateDiscordAndSteamId } from "lib/auth/validate-discord-steam-id";
 import { createFeaturesObject } from "middlewares/is-enabled";
+import { sendUserWhitelistStatusChangeWebhook } from "../admin/manage/manage-users-controller";
 
 @Controller("/auth")
 @ContentType("application/json")
@@ -172,12 +180,6 @@ export class AuthController {
       userCount <= 0
         ? {
             rank: Rank.OWNER,
-            isDispatch: true,
-            isLeo: true,
-            isEmsFd: true,
-            isSupervisor: true,
-            isTow: true,
-            isTaxi: true,
             whitelistStatus: WhitelistStatus.ACCEPTED,
           }
         : {
@@ -185,6 +187,10 @@ export class AuthController {
             whitelistStatus: cad.whitelisted ? WhitelistStatus.PENDING : WhitelistStatus.ACCEPTED,
             permissions,
           };
+
+    if (cad.whitelisted && extraUserData.whitelistStatus === WhitelistStatus.PENDING) {
+      await sendUserWhitelistStatusChangeWebhook({ ...user, ...extraUserData });
+    }
 
     await prisma.user.update({
       where: { id: user.id },
@@ -207,7 +213,7 @@ export class AuthController {
 }
 
 export function getDefaultPermissionsForNewUser(
-  cad: (cad & { autoSetUserProperties?: AutoSetUserProperties | null }) | null,
+  cad: (cad & { autoSetUserProperties: AutoSetUserProperties | null }) | null,
 ) {
   const permissions: Permissions[] = [Permissions.CreateBusinesses];
 

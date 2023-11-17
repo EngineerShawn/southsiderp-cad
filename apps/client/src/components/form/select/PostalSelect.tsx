@@ -1,11 +1,10 @@
 import * as React from "react";
-import { AddressValue, ValueType } from "@snailycad/types";
+import { type AddressValue, ValueType } from "@snailycad/types";
 import { useValues } from "context/ValuesContext";
 import { useFormikContext } from "formik";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import { useTranslations } from "use-intl";
-import { FormRow } from "../FormRow";
-import { AsyncListSearchField, Item } from "@snailycad/ui";
+import { AsyncListSearchField, FormRow, Item } from "@snailycad/ui";
 import { classNames } from "lib/classNames";
 import type { Node } from "@react-types/shared";
 
@@ -55,8 +54,9 @@ export function AddressPostalSelect(props: Props) {
     if (_values.type === "address") {
       setValues({
         ...values,
-        [addressLabel]: _values.localValue ?? values[addressLabel],
-        postal: _values.node?.value.postal ?? values.postal,
+        [addressLabel]:
+          _values.node?.value?.value.value ?? _values.localValue ?? values[addressLabel],
+        postal: _values.node?.value?.postal ?? values.postal,
       });
 
       if (_values.node) {
@@ -66,8 +66,8 @@ export function AddressPostalSelect(props: Props) {
     } else {
       setValues({
         ...values,
-        postal: _values.localValue ?? values.postal,
-        [addressLabel]: _values.node?.value.value.value ?? values[addressLabel],
+        postal: _values.node?.value?.postal ?? _values.localValue ?? values.postal,
+        [addressLabel]: _values.node?.value?.value.value ?? values[addressLabel],
       });
 
       if (_values.node) {
@@ -78,7 +78,7 @@ export function AddressPostalSelect(props: Props) {
   }
 
   return (
-    <FormRow disabled={props.postalOnly} flexLike>
+    <FormRow useFlex>
       {props.postalOnly ? null : (
         <AsyncListSearchField<AddressValue>
           isDisabled={props.isDisabled}
@@ -90,8 +90,11 @@ export function AddressPostalSelect(props: Props) {
           isOptional={props.addressOptional}
           errorMessage={errors[addressLabel]}
           localValue={values[addressLabel] ?? ""}
-          setValues={(values) => {
-            handleSuggestionPress({ ...values, type: "address" });
+          onInputChange={(value) => {
+            handleSuggestionPress({ ...values, type: "address", localValue: value });
+          }}
+          onSelectionChange={(node) => {
+            handleSuggestionPress({ ...values, type: "address", node });
           }}
           fetchOptions={{
             filterTextRequired: true,
@@ -114,18 +117,22 @@ export function AddressPostalSelect(props: Props) {
       )}
 
       <AsyncListSearchField<AddressValue>
-        menuClassName="min-w-[350px] right-0"
+        menuClassName="min-w-[350px]"
+        menuPlacement="bottom end"
         isDisabled={props.isDisabled}
         selectedKey={selectedPostal}
         allowsCustomValue
         defaultItems={address.values}
-        className={classNames(!props.postalOnly && "w-[300px]")}
+        className={classNames(!props.postalOnly ? "w-[300px]" : "w-full")}
         label={common("postal")}
         isOptional={props.postalOptional}
         errorMessage={errors.postal}
         localValue={values.postal ?? ""}
-        setValues={(values) => {
-          handleSuggestionPress({ ...values, type: "postal" });
+        onInputChange={(value) => {
+          handleSuggestionPress({ ...values, type: "postal", localValue: value });
+        }}
+        onSelectionChange={(node) => {
+          handleSuggestionPress({ ...values, type: "postal", node });
         }}
         fetchOptions={{
           filterTextRequired: true,

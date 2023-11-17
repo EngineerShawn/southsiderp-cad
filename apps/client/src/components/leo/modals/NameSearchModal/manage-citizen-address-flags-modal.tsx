@@ -1,7 +1,5 @@
 import type { Value } from "@snailycad/types";
-import { Button } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
+import { Button, SelectField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { useValues } from "context/ValuesContext";
@@ -9,22 +7,18 @@ import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
 import { useNameSearch } from "state/search/name-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import type { PutSearchActionsCitizenAddressFlagsData } from "@snailycad/types/api";
-import { shallow } from "zustand/shallow";
 
 export function ManageCitizenAddressFlagsModal() {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const cT = useTranslations("Citizen");
-  const { currentResult, setCurrentResult } = useNameSearch(
-    (state) => ({
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-    }),
-    shallow,
-  );
+  const { currentResult, setCurrentResult } = useNameSearch((state) => ({
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+  }));
   const { addressFlag } = useValues();
   const { state, execute } = useFetch();
 
@@ -34,12 +28,12 @@ export function ManageCitizenAddressFlagsModal() {
     const { json } = await execute<PutSearchActionsCitizenAddressFlagsData>({
       path: `/search/actions/citizen-address-flags/${currentResult.id}`,
       method: "PUT",
-      data: { addressFlags: values.addressFlags.map((v) => v.value) },
+      data: { addressFlags: values.addressFlags.map((v) => v) },
     });
 
     if (json.addressFlags) {
       setCurrentResult({ ...currentResult, ...json });
-      closeModal(ModalIds.ManageAddressFlags);
+      modalState.closeModal(ModalIds.ManageAddressFlags);
     }
   }
 
@@ -52,34 +46,33 @@ export function ManageCitizenAddressFlagsModal() {
   }
 
   const INITIAL_VALUES = {
-    addressFlags: currentResult.addressFlags?.map(makeValueOption) ?? [],
+    addressFlags: currentResult.addressFlags?.map((v) => v.id) ?? [],
   };
 
   return (
     <Modal
       title={t("manageAddressFlags")}
-      isOpen={isOpen(ModalIds.ManageAddressFlags)}
-      onClose={() => closeModal(ModalIds.ManageAddressFlags)}
+      isOpen={modalState.isOpen(ModalIds.ManageAddressFlags)}
+      onClose={() => modalState.closeModal(ModalIds.ManageAddressFlags)}
       className="w-[600px]"
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, values, errors, isValid }) => (
+        {({ setFieldValue, values, errors, isValid }) => (
           <Form autoComplete="off">
-            <FormField errorMessage={errors.addressFlags as string} label={cT("addressFlags")}>
-              <Select
-                isMulti
-                values={addressFlag.values.map(makeValueOption)}
-                name="addressFlags"
-                onChange={handleChange}
-                value={values.addressFlags}
-              />
-            </FormField>
+            <SelectField
+              errorMessage={errors.addressFlags as string}
+              label={cT("addressFlags")}
+              selectionMode="multiple"
+              options={addressFlag.values.map(makeValueOption)}
+              selectedKeys={values.addressFlags}
+              onSelectionChange={(keys) => setFieldValue("flags", keys)}
+            />
 
             <footer className="flex justify-end mt-5">
               <Button
                 disabled={state === "loading"}
                 type="reset"
-                onPress={() => closeModal(ModalIds.ManageAddressFlags)}
+                onPress={() => modalState.closeModal(ModalIds.ManageAddressFlags)}
                 variant="cancel"
               >
                 {common("cancel")}

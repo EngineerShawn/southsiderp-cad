@@ -1,7 +1,8 @@
+import type { DOMAttributes } from "@react-types/shared";
 import { ExclamationTriangleFill } from "react-bootstrap-icons";
 
 interface Props {
-  errorMessageProps: any;
+  errorMessageProps?: DOMAttributes;
   errorMessage: React.ReactNode;
 }
 

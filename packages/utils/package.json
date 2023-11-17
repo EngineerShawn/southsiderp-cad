@@ -1,33 +1,44 @@
 {
   "name": "@snailycad/utils",
-  "version": "1.53.0",
+  "version": "1.77.2",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.mjs"
     },
     "./callsign": {
+      "types": "./dist/callsign.d.ts",
       "require": "./dist/callsign.js",
       "import": "./dist/callsign.mjs"
     },
     "./typeguards": {
+      "types": "./dist/typeguards.d.ts",
       "require": "./dist/typeguards.js",
       "import": "./dist/typeguards.mjs"
     },
     "./version": {
+      "types": "./dist/version.d.ts",
       "require": "./dist/version.js",
       "import": "./dist/version.mjs"
     },
     "./api-url": {
+      "types": "./dist/api-url.d.ts",
       "require": "./dist/api-url.js",
       "import": "./dist/api-url.mjs"
     },
     "./case-number": {
+      "types": "./dist/case-number.d.ts",
       "require": "./dist/case-number.js",
       "import": "./dist/case-number.mjs"
+    },
+    "./editor": {
+      "types": "./dist/editor/index.d.ts",
+      "require": "./dist/editor/index.js",
+      "import": "./dist/editor/index.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -50,33 +61,35 @@
       ],
       "case-number": [
         "dist/case-number.d.ts"
+      ],
+      "editor": [
+        "dist/editor/index.d.ts"
       ]
     }
   },
   "scripts": {
-    "build": "yarn tsup",
-    "watch": "yarn tsup --watch --silent=false",
-    "typecheck": "yarn tsc --noEmit",
-    "test:watch": "yarn vitest --watch",
-    "test": "yarn vitest run"
+    "build": "pnpm tsup",
+    "watch": "pnpm tsup --watch --silent=false",
+    "typecheck": "pnpm tsc --noEmit",
+    "test:watch": "pnpm vitest --watch",
+    "test": "pnpm vitest run"
   },
   "devDependencies": {
-    "@snailycad/types": "1.53.0",
-    "c8": "^7.13.0",
-    "tslib": "^2.5.0",
-    "tsup": "^6.7.0",
-    "typescript": "^5.0.2",
-    "vite": "^4.2.1",
-    "vitest": "^0.29.8"
+    "@types/node": "^20.8.7",
+    "c8": "^8.0.1",
+    "tsup": "6.6.2",
+    "typescript": "^5.2.2",
+    "vite": "^4.5.0",
+    "vitest": "^0.34.6"
   },
   "tsup": {
     "entry": [
-      "src/**/*.ts"
+      "src/**/**/*.ts"
     ],
     "dts": true,
     "bundle": false,
     "platform": "node",
-    "target": "node16",
+    "target": "node18",
     "silent": true,
     "treeshake": true,
     "format": [
@@ -84,5 +97,14 @@
       "esm"
     ]
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "dependencies": {
+    "@snailycad/types": "^1.77.2",
+    "date-fns": "^2.30.0",
+    "slate": "0.100.0",
+    "slate-history": "^0.100.0",
+    "slate-react": "^0.100.0",
+    "tslib": "^2.6.2",
+    "undici": "5.26.4"
+  }
 }

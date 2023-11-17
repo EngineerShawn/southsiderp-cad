@@ -1,40 +1,36 @@
 import { Loader, Button, SelectField } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { useValues } from "context/ValuesContext";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
-import { filterLicenseTypes } from "lib/utils";
+import { filterLicenseType, filterLicenseTypes } from "lib/utils";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
-import { ValueLicenseType } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
+import { ValueLicenseType, ValueType } from "@snailycad/types";
 import { useVehicleSearch } from "state/search/vehicle-search-state";
 import { useVehicleLicenses } from "hooks/locale/useVehicleLicenses";
 import { useNameSearch } from "state/search/name-search-state";
 import type { PutSearchActionsVehicleLicensesData } from "@snailycad/types/api";
-import { shallow } from "zustand/shallow";
+import { ValueSelectField } from "components/form/inputs/value-select-field";
+import { hasSearchResults } from "../VehicleSearchModal";
 
 export function ManageVehicleLicensesModal() {
   const common = useTranslations("Common");
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const { license } = useValues();
   const { currentResult, setCurrentResult } = useVehicleSearch();
-  const nameSearchState = useNameSearch(
-    (state) => ({
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-    }),
-    shallow,
-  );
+  const nameSearchState = useNameSearch((state) => ({
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+  }));
   const { state, execute } = useFetch();
 
   const t = useTranslations();
   const { INSPECTION_STATUS, TAX_STATUS } = useVehicleLicenses();
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
-    if (!currentResult) return;
+    if (!hasSearchResults(currentResult)) return;
 
     const { json } = await execute<PutSearchActionsVehicleLicensesData>({
       path: `/search/actions/vehicle-licenses/${currentResult.id}`,
@@ -46,7 +42,7 @@ export function ManageVehicleLicensesModal() {
       const updatedVehicle = { ...currentResult, ...json };
 
       setCurrentResult(updatedVehicle);
-      closeModal(ModalIds.ManageVehicleLicenses);
+      modalState.closeModal(ModalIds.ManageVehicleLicenses);
 
       if (nameSearchState.currentResult && !nameSearchState.currentResult.isConfidential) {
         nameSearchState.setCurrentResult({
@@ -59,7 +55,7 @@ export function ManageVehicleLicensesModal() {
     }
   }
 
-  if (!currentResult) {
+  if (!hasSearchResults(currentResult)) {
     return null;
   }
 
@@ -73,45 +69,29 @@ export function ManageVehicleLicensesModal() {
   return (
     <Modal
       title={t("Leo.editLicenses")}
-      isOpen={isOpen(ModalIds.ManageVehicleLicenses)}
-      onClose={() => closeModal(ModalIds.ManageVehicleLicenses)}
+      isOpen={modalState.isOpen(ModalIds.ManageVehicleLicenses)}
+      onClose={() => modalState.closeModal(ModalIds.ManageVehicleLicenses)}
       className="min-w-[600px]"
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, errors, values }) => (
+        {({ setFieldValue, errors, values }) => (
           <Form>
-            <FormField
-              errorMessage={errors.registrationStatus}
+            <ValueSelectField
+              fieldName="registrationStatus"
+              valueType={ValueType.LICENSE}
+              values={filterLicenseTypes(license.values, ValueLicenseType.REGISTRATION_STATUS)}
               label={t("Vehicles.registrationStatus")}
-            >
-              <Select
-                values={filterLicenseTypes(
-                  license.values,
-                  ValueLicenseType.REGISTRATION_STATUS,
-                ).map((license) => ({
-                  label: license.value,
-                  value: license.id,
-                }))}
-                value={values.registrationStatus}
-                name="registrationStatus"
-                onChange={handleChange}
-              />
-            </FormField>
+              filterFn={(v) => filterLicenseType(v, ValueLicenseType.REGISTRATION_STATUS)}
+            />
 
-            <FormField errorMessage={errors.insuranceStatus} label={t("Vehicles.insuranceStatus")}>
-              <Select
-                isClearable
-                values={filterLicenseTypes(license.values, ValueLicenseType.INSURANCE_STATUS).map(
-                  (license) => ({
-                    label: license.value,
-                    value: license.id,
-                  }),
-                )}
-                value={values.insuranceStatus}
-                name="insuranceStatus"
-                onChange={handleChange}
-              />
-            </FormField>
+            <ValueSelectField
+              isClearable
+              fieldName="insuranceStatus"
+              valueType={ValueType.LICENSE}
+              values={filterLicenseTypes(license.values, ValueLicenseType.INSURANCE_STATUS)}
+              label={t("Vehicles.insuranceStatus")}
+              filterFn={(v) => filterLicenseType(v, ValueLicenseType.INSURANCE_STATUS)}
+            />
 
             <SelectField
               isOptional
@@ -138,7 +118,7 @@ export function ManageVehicleLicensesModal() {
             <footer className="flex items-center justify-end gap-2 mt-5">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.ManageVehicleLicenses)}
+                onPress={() => modalState.closeModal(ModalIds.ManageVehicleLicenses)}
                 variant="cancel"
               >
                 {common("cancel")}

@@ -1,20 +1,25 @@
 import * as React from "react";
 import { useTranslations } from "use-intl";
-import { Button, Input } from "@snailycad/ui";
+import { Button, CheckboxField, FullDate } from "@snailycad/ui";
 import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { makeUnitName, requestAll } from "lib/utils";
 import type { GetServerSideProps } from "next";
-import { Record, BaseCitizen, RecordRelease, ReleaseType, ValueType } from "@snailycad/types";
+import {
+  type Record,
+  type BaseCitizen,
+  type RecordRelease,
+  ReleaseType,
+  ValueType,
+} from "@snailycad/types";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { Table, useTableState } from "components/shared/Table";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import compareDesc from "date-fns/compareDesc";
-import { ReleaseCitizenModal } from "components/leo/jail/ReleaseCitizenModal";
+import { ReleaseCitizenModal } from "components/leo/jail/release-citizen-modal";
 import { Title } from "components/shared/Title";
-import { FullDate } from "components/shared/FullDate";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { NameSearchModal } from "components/leo/modals/NameSearchModal/NameSearchModal";
@@ -22,7 +27,6 @@ import { useAsyncTable } from "hooks/shared/table/use-async-table";
 import type { GetJailedCitizensData } from "@snailycad/types/api";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import { RecordsCaseNumberColumn } from "components/leo/records-case-number-column";
-import { FormField } from "components/form/FormField";
 
 interface Props {
   data: GetJailedCitizensData;
@@ -51,7 +55,7 @@ export default function Jail({ data }: Props) {
 
   const t = useTranslations("Leo");
   const common = useTranslations("Common");
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { generateCallsign } = useGenerateCallsign();
   const { hasPermissions } = usePermission();
   const { SOCIAL_SECURITY_NUMBERS } = useFeatureEnabled();
@@ -64,16 +68,16 @@ export default function Jail({ data }: Props) {
     asyncTable.update(releasedCitizenData.id, releasedCitizenData);
 
     setTempCitizen(null);
-    closeModal(ModalIds.AlertReleaseCitizen);
+    modalState.closeModal(ModalIds.AlertReleaseCitizen);
   }
 
   function handleCheckoutClick(item: BaseCitizen & { record: Record }, recordId: string) {
     setTempCitizen({ ...item, recordId });
-    openModal(ModalIds.AlertReleaseCitizen);
+    modalState.openModal(ModalIds.AlertReleaseCitizen);
   }
 
   function handleNameClick(item: BaseCitizen & { Record: Record[]; record: Record }) {
-    openModal(ModalIds.NameSearch, { ...item, name: `${item.name} ${item.surname}` });
+    modalState.openModal(ModalIds.NameSearch, { ...item, name: `${item.name} ${item.surname}` });
   }
 
   const _itemsWithArrestReportSortedByCreatedAt = React.useMemo(() => {
@@ -95,7 +99,6 @@ export default function Jail({ data }: Props) {
   return (
     <Layout
       permissions={{
-        fallback: (u) => u.isLeo,
         permissions: [Permissions.ViewJail, Permissions.ManageJail],
       }}
       className="dark:text-white"
@@ -103,24 +106,25 @@ export default function Jail({ data }: Props) {
       <header className="flex flex-col flex-start">
         <Title>{t("jail")}</Title>
 
-        <FormField className="w-full" label="Show active only" checkbox>
-          <Input
-            checked={Boolean(asyncTable.filters?.activeOnly)}
-            onChange={() => {
-              asyncTable.setFilters((prev) => ({
-                ...prev,
-                activeOnly: !prev?.activeOnly,
-              }));
-            }}
-            type="checkbox"
-          />
-        </FormField>
+        <CheckboxField
+          onChange={(isSelected) => {
+            asyncTable.pagination.setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+            asyncTable.setFilters((prev) => ({
+              ...prev,
+              activeOnly: isSelected,
+            }));
+          }}
+          isSelected={Boolean(asyncTable.filters?.activeOnly)}
+        >
+          {t("showActiveOnly")}
+        </CheckboxField>
       </header>
 
       {_itemsWithArrestReportSortedByCreatedAt.length <= 0 ? (
         <p className="mt-5">{t("noImprisonedCitizens")}</p>
       ) : (
         <Table
+          isLoading={asyncTable.isLoading}
           tableState={tableState}
           data={_itemsWithArrestReportSortedByCreatedAt.map((item) => {
             const jailTime = item.record?.violations.reduce((ac, cv) => ac + (cv.jailTime || 0), 0);
@@ -131,7 +135,7 @@ export default function Jail({ data }: Props) {
             const status = !released
               ? t("arrested")
               : type === ReleaseType.BAIL_POSTED
-              ? `Bail Posted (${citizen?.name} ${citizen?.surname})`
+              ? t("bailPosted", { citizen: `${citizen?.name} ${citizen?.surname}` })
               : t("timeOut");
 
             return {
@@ -171,7 +175,7 @@ export default function Jail({ data }: Props) {
             { header: t("jailTime"), accessorKey: "jailTime" },
             { header: t("status"), accessorKey: "status" },
             { header: common("createdAt"), accessorKey: "createdAt" },
-            hasPermissions([Permissions.ManageJail], true)
+            hasPermissions([Permissions.ManageJail])
               ? { header: common("actions"), accessorKey: "actions" }
               : null,
           ]}

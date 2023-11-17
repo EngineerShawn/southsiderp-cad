@@ -7,35 +7,41 @@ import { request } from "undici";
 import type { RESTPostOAuth2AccessTokenResult, APIUser } from "discord-api-types/v10";
 import { prisma } from "lib/data/prisma";
 import { getSessionUser } from "lib/auth/getSessionUser";
-import { cad, Feature, Rank, WhitelistStatus, type User } from "@prisma/client";
+import { type cad, Feature, Rank, WhitelistStatus, type User } from "@prisma/client";
 import { getDefaultPermissionsForNewUser } from "./auth-controller";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { DISCORD_API_URL } from "lib/discord/config";
 import { updateMemberRolesLogin } from "lib/discord/auth";
 import { ContentType, Description } from "@tsed/schema";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { setUserTokenCookies } from "lib/auth/setUserTokenCookies";
 import { getAPIUrl } from "@snailycad/utils/api-url";
 import { IsFeatureEnabled } from "middlewares/is-enabled";
 import { encode } from "lib/discord/utils";
 
 const callbackUrl = makeCallbackURL(getAPIUrl());
-const DISCORD_CLIENT_ID = process.env["DISCORD_CLIENT_ID"];
-const DISCORD_CLIENT_SECRET = process.env["DISCORD_CLIENT_SECRET"];
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 
 @Controller("/auth/discord")
 @ContentType("application/json")
-@IsFeatureEnabled({ feature: [Feature.DISCORD_AUTH, Feature.FORCE_DISCORD_AUTH] })
+@IsFeatureEnabled({ feature: [Feature.DISCORD_AUTH] })
 export class DiscordAuth {
   @Get("/")
   @Description("Redirect to Discord OAuth2 URL")
   async handleRedirectToDiscordOAuthAPI(@Res() res: Res) {
     const url = new URL(`${DISCORD_API_URL}/oauth2/authorize`);
+    const redirectURL = findRedirectURL();
 
     if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
       throw new BadRequest(
         "No `DISCORD_CLIENT_ID` was specified in the .env file. Please refer to the documentation: https://docs.snailycad.org/docs/discord-integration/discord-authentication",
       );
+    }
+
+    const userCount = await prisma.user.count();
+    if (userCount <= 0) {
+      return res.redirect(`${redirectURL}/auth/login?error=ownerCannotDiscordAuth`);
     }
 
     url.searchParams.append("client_id", DISCORD_CLIENT_ID);
@@ -66,7 +72,7 @@ export class DiscordAuth {
     ]);
 
     if (!data?.id) {
-      return res.redirect(`${redirectURL}/auth/login?error=could not fetch discord data`);
+      return res.redirect(`${redirectURL}/auth/login?error=discordAuthIssue`);
     }
 
     const users = await prisma.user.count();
@@ -256,14 +262,15 @@ async function getDiscordData(code: string): Promise<APIUser | null> {
       Authorization: `Bearer ${accessToken}`,
     },
   })
-    .then((v) => v.body.json())
+    .then((v) => v.body.json() as any)
     .catch(() => null);
 
   return meData;
 }
 
 export function findRedirectURL() {
-  const url = process.env.CORS_ORIGIN_URL ?? "http://localhost:3000";
+  const url =
+    process.env.NEXT_PUBLIC_CLIENT_URL ?? process.env.CORS_ORIGIN_URL ?? "http://localhost:3000";
 
   if (url.includes("*") && process.env.NEXT_PUBLIC_CLIENT_URL) {
     return process.env.NEXT_PUBLIC_CLIENT_URL;

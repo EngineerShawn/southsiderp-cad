@@ -3,7 +3,7 @@ import { ContentType, Delete, Description, Post, Put } from "@tsed/schema";
 import { NotFound } from "@tsed/exceptions";
 import { BodyParams, PathParams } from "@tsed/platform-params";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { CALL_911_EVENT_SCHEMA } from "@snailycad/schemas";
 import { validateSchema } from "lib/data/validate-schema";
 import { Socket } from "services/socket-service";
@@ -25,7 +25,6 @@ export class IncidentEventsController {
   @Description("Create a new incident event.")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ViewIncidents, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async createIncidentEvent(
     @PathParams("incidentId") incidentId: string,
@@ -63,7 +62,6 @@ export class IncidentEventsController {
   @Description("Update an incident event by the incident id and event id.")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async updateIncidentEvent(
     @PathParams("incidentId") incidentId: string,
@@ -121,7 +119,6 @@ export class IncidentEventsController {
   @Description("Delete an incident event by the incident id and event id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async deleteIncidentEvent(
     @PathParams("incidentId") incidentId: string,

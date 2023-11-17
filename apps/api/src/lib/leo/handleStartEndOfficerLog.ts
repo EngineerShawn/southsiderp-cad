@@ -1,12 +1,12 @@
-import { EmsFdDeputy, Officer, ShouldDoType } from "@prisma/client";
-import { callInclude } from "controllers/dispatch/911-calls/Calls911Controller";
+import { type EmsFdDeputy, type Officer, ShouldDoType } from "@prisma/client";
 import { incidentInclude } from "controllers/leo/incidents/IncidentController";
 import { prisma } from "lib/data/prisma";
 import type { Socket } from "services/socket-service";
+import { callInclude } from "~/utils/leo/includes";
 
 interface Options<Type extends "leo" | "ems-fd"> {
   shouldDo: ShouldDoType;
-  unit: Type extends "leo" ? Omit<Officer, "divisionId"> : EmsFdDeputy;
+  unit: Type extends "leo" ? Officer : EmsFdDeputy;
   socket: Socket;
   userId?: string | null;
   type: Type;
@@ -123,6 +123,13 @@ async function handleUnassignFromActiveIncident<Type extends "leo" | "ems-fd">(
     include: incidentInclude,
   });
   if (!incident) return;
+
+  // unassign officer from incident
+  // @ts-expect-error method has same properties
+  await prisma[prismaName].update({
+    where: { id: options.unit.id },
+    data: { activeIncidentId: null },
+  });
 
   /**
    * remove officer from involved officers then emit via socket

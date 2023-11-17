@@ -9,14 +9,14 @@ import { Title } from "components/shared/Title";
 import { Permissions } from "@snailycad/permissions";
 import { TabList } from "@snailycad/ui";
 import { CitizenLogsTab } from "components/leo/citizen-logs/citizen-logs-tab";
-import { ArrestReportsTab } from "components/leo/citizen-logs/arrest-reports-tab";
+import { PendingCitizenRecordsTab } from "components/leo/citizen-logs/pending-citizen-logs-tab";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import type { GetManagePendingArrestReports, GetManageRecordLogsData } from "@snailycad/types/api";
+import type { GetManagePendingCitizenRecords, GetManageRecordLogsData } from "@snailycad/types/api";
 
 export type CitizenLog = RecordLog & { citizen: Citizen };
 interface Props {
   citizens: GetManageRecordLogsData;
-  arrestReports: GetManagePendingArrestReports;
+  pendingCitizenRecords: GetManagePendingCitizenRecords;
 }
 
 export default function CitizenLogs(props: Props) {
@@ -27,22 +27,28 @@ export default function CitizenLogs(props: Props) {
   const TABS = [{ value: "citizen-logs-tab", name: t("citizenLogs") }];
 
   if (CITIZEN_RECORD_APPROVAL) {
-    TABS[1] = { value: "arrest-reports-tab", name: t("arrestReportLogs") };
+    TABS[1] = { value: "pending-citizen-records-tab", name: t("pendingCitizenRecords") };
   }
 
   return (
     <Layout
       permissions={{
-        fallback: (u) => u.isLeo,
         permissions: [Permissions.ViewCitizenLogs, Permissions.DeleteCitizenRecords],
       }}
       className="dark:text-white"
     >
-      <Title>{t("citizenLogs")}</Title>
+      <header className="mb-5">
+        <Title>{t("citizenLogs")}</Title>
+        <p className="max-w-2xl mt-2 text-neutral-700 dark:text-gray-400">
+          {t("citizenLogsDescription")}
+        </p>
+      </header>
 
       <TabList tabs={TABS}>
         <CitizenLogsTab citizens={props.citizens} />
-        {CITIZEN_RECORD_APPROVAL ? <ArrestReportsTab arrestReports={props.arrestReports} /> : null}
+        {CITIZEN_RECORD_APPROVAL ? (
+          <PendingCitizenRecordsTab pendingCitizenRecords={props.pendingCitizenRecords} />
+        ) : null}
       </TabList>
     </Layout>
   );
@@ -50,18 +56,21 @@ export default function CitizenLogs(props: Props) {
 
 export const getServerSideProps: GetServerSideProps = async ({ req, locale }) => {
   const user = await getSessionUser(req);
-  const [citizens, arrestReports] = await requestAll(req, [
+  const [citizens, pendingCitizenRecords] = await requestAll(req, [
     ["/admin/manage/records-logs", { citizens: [], totalCount: 0 }],
-    ["/admin/manage/pending-arrest-reports", { arrestReports: [], totalCount: 0 }],
+    ["/admin/manage/pending-citizen-records", { pendingCitizenRecords: [], totalCount: 0 }],
   ]);
 
   return {
     props: {
       session: user,
-      arrestReports,
+      pendingCitizenRecords,
       citizens,
       messages: {
-        ...(await getTranslations(["leo", "common"], user?.locale ?? locale)),
+        ...(await getTranslations(
+          ["leo", "common", "courthouse", "citizen"],
+          user?.locale ?? locale,
+        )),
       },
     },
   };

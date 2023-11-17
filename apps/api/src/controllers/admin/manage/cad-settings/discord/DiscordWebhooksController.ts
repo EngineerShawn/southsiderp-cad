@@ -2,21 +2,26 @@ import process from "node:process";
 import { BodyParams, Context, Controller, UseBeforeEach } from "@tsed/common";
 import { ContentType, Get, Post } from "@tsed/schema";
 import {
-  APITextChannel,
+  type APITextChannel,
   ChannelType,
-  RESTGetAPIGuildChannelsResult,
-  RESTGetAPIWebhookResult,
+  type RESTGetAPIGuildChannelsResult,
+  type RESTGetAPIWebhookResult,
   Routes,
 } from "discord-api-types/v10";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { prisma } from "lib/data/prisma";
-import { cad, DiscordWebhook, DiscordWebhookType, MiscCadSettings, Rank } from "@prisma/client";
+import {
+  type cad,
+  type DiscordWebhook,
+  type DiscordWebhookType,
+  type MiscCadSettings,
+} from "@prisma/client";
 import { BadRequest } from "@tsed/exceptions";
 import { DISCORD_WEBHOOKS_SCHEMA } from "@snailycad/schemas";
 import { validateSchema } from "lib/data/validate-schema";
 import type * as APITypes from "@snailycad/types/api";
 import { resolve } from "node:path";
-import { encodeFromFile } from "@snaily-cad/image-data-uri";
+import { encodeFromFile } from "@snailycad/image-data-uri";
 import { Permissions, UsePermissions } from "middlewares/use-permissions";
 import { performDiscordRequest } from "lib/discord/performDiscordRequest";
 import { AuditLogActionType } from "@snailycad/audit-logger";
@@ -53,7 +58,6 @@ export class DiscordWebhooksController {
 
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.rank === Rank.OWNER,
     permissions: [Permissions.ManageCADSettings],
   })
   async getGuildChannels(@Context("cad") cad: cad): Promise<APITypes.GetCADDiscordWebhooksData> {
@@ -94,7 +98,6 @@ export class DiscordWebhooksController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.rank === Rank.OWNER,
     permissions: [Permissions.ManageCADSettings],
   })
   async setWebhookTypes(
@@ -196,8 +199,8 @@ export class DiscordWebhooksController {
     // delete previous webhook if exists.
     if ((prevId && !channelId) || (prevId && channelId !== prevId)) {
       await performDiscordRequest({
-        async handler(rest) {
-          await rest.delete(Routes.webhook(prevId));
+        handler(rest) {
+          return rest.delete(Routes.webhook(prevId));
         },
       });
     }
@@ -216,8 +219,8 @@ export class DiscordWebhooksController {
 
       if (prevWebhookData?.id) {
         await performDiscordRequest({
-          async handler(rest) {
-            rest.patch(Routes.webhook(prevId), {
+          handler(rest) {
+            return rest.patch(Routes.webhook(prevId), {
               body: { name, avatar: avatarURI },
             });
           },

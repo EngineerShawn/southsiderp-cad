@@ -1,4 +1,4 @@
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "../prisma/index";
 import type * as Types from "../index.js";
 
 /**
@@ -98,7 +98,8 @@ export type DeleteImportWeaponsData = boolean;
 export interface GetManageBusinessesData {
   totalCount: number;
   businesses: (Prisma.Business & {
-    citizen: { id: string; name: string; surname: string };
+    /** owners */
+    employees: (Prisma.Employee & { citizen: Types.BaseCitizen })[];
     user: Types.User;
   })[];
 }
@@ -108,6 +109,7 @@ export interface GetManageBusinessesData {
  * @route /admin/manage/businesses/:id
  */
 export interface GetManageBusinessByIdEmployeesData {
+  status?: Types.WhitelistStatus | null | undefined;
   totalCount: number;
   employees: (Prisma.Employee & {
     citizen: Pick<Types.BaseCitizen, "id" | "name" | "surname">;
@@ -151,11 +153,11 @@ export interface GetManageRecordLogsData {
 
 /**
  * @method GET
- * @route /admin/manage/citizens/pending-arrest-reports
+ * @route /admin/manage/citizens/pending-citizen-records
  */
-export interface GetManagePendingArrestReports {
+export interface GetManagePendingCitizenRecords {
   totalCount: number;
-  arrestReports: GetManageRecordsLogsCitizenData["recordsLogs"];
+  pendingCitizenRecords: GetManageRecordsLogsCitizenData["recordsLogs"];
 }
 
 /**
@@ -191,6 +193,8 @@ export type GetManageCitizenByIdData =
       ethnicity?: Prisma.Value | null;
       gender?: Prisma.Value | null;
       weaponLicense: Prisma.Value | null;
+      huntingLicense: Prisma.Value | null;
+      fishingLicense: Prisma.Value | null;
       driversLicense: Prisma.Value | null;
       pilotLicense: Prisma.Value | null;
       waterLicense: Prisma.Value | null;
@@ -206,10 +210,12 @@ export type GetManageCitizenByIdData =
 export type PostCitizenRecordLogsData = Prisma.Record & {
   officer?: Types.Officer | null;
   violations: (Prisma.Violation & {
-    penalCode: Prisma.PenalCode & {
-      warningApplicable: Prisma.WarningApplicable | null;
-      warningNotApplicable: Prisma.WarningNotApplicable | null;
-    };
+    penalCode?:
+      | (Prisma.PenalCode & {
+          warningApplicable: Prisma.WarningApplicable | null;
+          warningNotApplicable: Prisma.WarningNotApplicable | null;
+        })
+      | null;
   })[];
   seizedItems: Prisma.SeizedItem[];
 };
@@ -406,7 +412,7 @@ export interface GetManageExpungementRequests {
     citizen: Prisma.Citizen;
     warrants: Prisma.Warrant[];
     records: (Prisma.Record & {
-      violations: (Prisma.Violation & { penalCode: Prisma.PenalCode })[];
+      violations: (Prisma.Violation & { penalCode?: Prisma.PenalCode | null })[];
     })[];
   })[];
   totalCount: number;

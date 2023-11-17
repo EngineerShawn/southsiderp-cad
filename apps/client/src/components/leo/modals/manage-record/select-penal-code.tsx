@@ -1,8 +1,10 @@
 import * as React from "react";
-import { Select, SelectValue } from "components/form/Select";
-import type { PenalCode, PenalCodeGroup } from "@snailycad/types";
-import { FormRow } from "components/form/FormRow";
+import { Select, type SelectValue } from "components/form/Select";
+import type { PenalCode } from "@snailycad/types";
+import { FormRow } from "@snailycad/ui";
 import { usePenalCodeGroups } from "hooks/values/use-penal-code-groups";
+import { parseCurrentValue } from "./table-item-form";
+import { useTranslations } from "use-intl";
 
 interface Props {
   value: SelectValue<PenalCode>[];
@@ -11,21 +13,16 @@ interface Props {
   isReadOnly?: boolean;
 }
 
-const ungroupedGroup = {
-  id: "ungrouped",
-  name: "Ungrouped",
-} as PenalCodeGroup;
-
-const allPenalCodesGroup = {
-  id: "all",
-  name: "All",
-} as PenalCodeGroup;
-
 export function SelectPenalCode({ value, handleChange, penalCodes, isReadOnly }: Props) {
   const [currentGroup, setCurrentGroup] = React.useState<string | null>("all");
   const { groups: penalCodeGroups } = usePenalCodeGroups();
+  const t = useTranslations("Leo");
 
-  const groups = [allPenalCodesGroup, ungroupedGroup, ...penalCodeGroups];
+  const groups = [
+    { id: "ungrouped", name: t("ungrouped") },
+    { id: "all", name: t("all") },
+    ...penalCodeGroups,
+  ];
   const [codes, setCodes] = React.useState<PenalCode[]>(penalCodes);
 
   function onGroupChange(e: { target: { value: string } }) {
@@ -42,7 +39,7 @@ export function SelectPenalCode({ value, handleChange, penalCodes, isReadOnly }:
   }
 
   return (
-    <FormRow flexLike>
+    <FormRow useFlex>
       <Select
         disabled={isReadOnly}
         className="w-[200px]"
@@ -66,7 +63,7 @@ export function SelectPenalCode({ value, handleChange, penalCodes, isReadOnly }:
           .filter((v) => !value.some((vio) => vio.value?.id === v.id))
           .map((value) => ({
             label: value.title,
-            value,
+            value: parseCurrentValue(value),
           }))}
       />
     </FormRow>

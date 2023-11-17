@@ -1,4 +1,4 @@
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "../prisma/index";
 import type * as Types from "../index.js";
 import type { APITextChannel } from "discord-api-types/v10";
 
@@ -82,3 +82,24 @@ export type GetCADDiscordWebhooksData = Required<Pick<APITextChannel, "id" | "na
  * @route /admin/manage/cad-settings/discord/webhooks
  */
 export type PostCADDiscordWebhooksData = Types.MiscCadSettings;
+
+/**
+ * @method GET
+ * @route /admin/manage/cad-settings/blacklisted-words
+ */
+export interface GetBlacklistedWordsData {
+  totalCount: number;
+  blacklistedWords: Prisma.BlacklistedWord[];
+}
+
+/**
+ * @method POST
+ * @route /admin/manage/cad-settings/blacklisted-words
+ */
+export type PostBlacklistedWordsData = Prisma.BlacklistedWord[];
+
+/**
+ * @method DELETE
+ * @route /admin/manage/cad-settings/blacklisted-words/:wordId
+ */
+export type DeleteBlacklistedWordsData = boolean;

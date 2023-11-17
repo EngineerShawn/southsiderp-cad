@@ -2,26 +2,32 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "use-intl";
 import { Layout } from "components/Layout";
-import { StatusesArea } from "components/shared/StatusesArea";
+import { StatusesArea } from "components/shared/utility-panel/statuses-area";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
 import { useLeoState } from "state/leo-state";
-import { ActiveToneType, Rank, Record, RecordType, ValueType } from "@snailycad/types";
+import {
+  ActiveToneType,
+  DashboardLayoutCardType,
+  type Record,
+  RecordType,
+  ValueType,
+} from "@snailycad/types";
 import { ActiveCalls } from "components/dispatch/active-calls/active-calls";
 import { useDispatchState } from "state/dispatch/dispatch-state";
 import { ModalButtons } from "components/leo/ModalButtons";
 import { ActiveBolos } from "components/active-bolos/active-bolos";
 import { requestAll } from "lib/utils";
-import { ActiveOfficers } from "components/dispatch/active-officers";
-import { ActiveDeputies } from "components/dispatch/active-deputies";
-import { ActiveWarrants } from "components/leo/active-warrants/ActiveWarrants";
+import { ActiveOfficers } from "components/dispatch/active-units/officers/active-officers";
+import { ActiveDeputies } from "components/dispatch/active-units/deputies/active-deputies";
+import { ActiveWarrants } from "components/leo/active-warrants/active-warrants";
 import { useSignal100 } from "hooks/shared/useSignal100";
 import { usePanicButton } from "hooks/shared/usePanicButton";
 import { Title } from "components/shared/Title";
-import { UtilityPanel } from "components/shared/UtilityPanel";
+import { UtilityPanel } from "components/shared/utility-panel/utility-panel";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { defaultPermissions, Permissions } from "@snailycad/permissions";
 import { useNameSearch } from "state/search/name-search-state";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
@@ -33,11 +39,13 @@ import type {
   GetActiveOfficersData,
   GetBolosData,
   GetEmsFdActiveDeputies,
+  GetUserData,
 } from "@snailycad/types/api";
 import { CreateWarrantModal } from "components/leo/modals/CreateWarrantModal";
 import { useCall911State } from "state/dispatch/call-911-state";
 import { usePermission } from "hooks/usePermission";
-import { shallow } from "zustand/shallow";
+import { useAuth } from "context/AuthContext";
+import { ActiveIncidents } from "components/dispatch/active-incidents/active-incidents";
 
 const Modals = {
   CreateWarrantModal: dynamic(
@@ -102,6 +110,9 @@ const Modals = {
     return (await import("components/leo/modals/SwitchDivisionCallsignModal"))
       .SwitchDivisionCallsignModal;
   }),
+  DepartmentInfoModal: dynamic(async () => {
+    return (await import("components/leo/modals/department-info-modal")).DepartmentInformationModal;
+  }),
 };
 
 interface Props {
@@ -110,6 +121,7 @@ interface Props {
   calls: Get911CallsData;
   bolos: GetBolosData;
   activeDeputies: GetEmsFdActiveDeputies;
+  session: GetUserData | null;
 }
 
 export default function OfficerDashboard({
@@ -118,6 +130,7 @@ export default function OfficerDashboard({
   activeOfficer,
   activeOfficers,
   activeDeputies,
+  session: _session,
 }: Props) {
   useLoadValuesClientSide({
     valueTypes: [
@@ -130,43 +143,24 @@ export default function OfficerDashboard({
       ValueType.PENAL_CODE,
       ValueType.DEPARTMENT,
       ValueType.DIVISION,
+      ValueType.WEAPON_FLAG,
     ],
   });
 
-  const leoState = useLeoState();
-  const dispatchState = useDispatchState();
+  const setActiveOfficer = useLeoState((state) => state.setActiveOfficer);
+  const dispatchState = useDispatchState((state) => ({
+    setBolos: state.setBolos,
+    setActiveOfficers: state.setActiveOfficers,
+    setActiveDeputies: state.setActiveDeputies,
+  }));
   const set911Calls = useCall911State((state) => state.setCalls);
   const t = useTranslations("Leo");
-  const signal100 = useSignal100();
-  const tones = useTones(ActiveToneType.LEO);
-  const panic = usePanicButton();
-  const { isOpen } = useModal();
-  const { LEO_TICKETS, ACTIVE_WARRANTS, CALLS_911 } = useFeatureEnabled();
-  const { hasPermissions } = usePermission();
-  const isAdmin = hasPermissions(
-    defaultPermissions.allDefaultAdminPermissions,
-    (u) => u.rank !== Rank.USER,
-  );
-
-  const { currentResult, setCurrentResult } = useNameSearch(
-    (state) => ({
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-    }),
-    shallow,
-  );
-
-  function handleRecordCreate(data: Record) {
-    if (!currentResult || currentResult.isConfidential) return;
-
-    setCurrentResult({
-      ...currentResult,
-      Record: [data, ...currentResult.Record],
-    });
-  }
+  const { ACTIVE_INCIDENTS, ACTIVE_WARRANTS, CALLS_911 } = useFeatureEnabled();
+  const { user } = useAuth();
+  const session = user ?? _session;
 
   React.useEffect(() => {
-    leoState.setActiveOfficer(activeOfficer);
+    setActiveOfficer(activeOfficer);
 
     set911Calls(calls.calls);
     dispatchState.setBolos(bolos.bolos);
@@ -177,20 +171,80 @@ export default function OfficerDashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bolos, calls, activeOfficers, activeDeputies, activeOfficer]);
 
+  const cards = [
+    {
+      type: DashboardLayoutCardType.ACTIVE_OFFICERS,
+      isEnabled: true,
+      children: <ActiveOfficers initialOfficers={activeOfficers} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_DEPUTIES,
+      isEnabled: true,
+      children: <ActiveDeputies initialDeputies={activeDeputies} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_CALLS,
+      isEnabled: CALLS_911,
+      children: <ActiveCalls initialData={calls} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_WARRANTS,
+      isEnabled: ACTIVE_WARRANTS,
+      children: <ActiveWarrants />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_BOLOS,
+      isEnabled: true,
+      children: <ActiveBolos initialBolos={bolos} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_INCIDENTS,
+      isEnabled: ACTIVE_INCIDENTS,
+      children: <ActiveIncidents />,
+    },
+  ];
+
+  const layoutOrder = session?.officerLayoutOrder ?? [];
+  const sortedCards = cards.sort((a, b) => {
+    return layoutOrder.indexOf(a.type) - layoutOrder.indexOf(b.type);
+  });
+
   return (
-    <Layout
-      permissions={{ fallback: (u) => u.isLeo, permissions: [Permissions.Leo] }}
-      className="dark:text-white"
-    >
+    <Layout permissions={{ permissions: [Permissions.Leo] }} className="dark:text-white">
       <Title renderLayoutTitle={false}>{t("officer")}</Title>
 
+      <OfficerHeader activeOfficer={activeOfficer} />
+
+      {sortedCards.map((card) =>
+        card.isEnabled ? <React.Fragment key={card.type}>{card.children}</React.Fragment> : null,
+      )}
+
+      <Modals.SelectOfficerModal />
+      <OfficerModals />
+    </Layout>
+  );
+}
+
+function OfficerHeader(props: Pick<Props, "activeOfficer">) {
+  const signal100 = useSignal100();
+  const tones = useTones(ActiveToneType.LEO);
+  const panic = usePanicButton();
+
+  const leoState = useLeoState();
+  const dispatchState = useDispatchState((state) => ({
+    activeOfficers: state.activeOfficers,
+    setActiveOfficers: state.setActiveOfficers,
+  }));
+
+  return (
+    <>
       <signal100.Component enabled={signal100.enabled} audio={signal100.audio} />
       <panic.Component audio={panic.audio} unit={panic.unit} />
       <tones.Component audio={tones.audio} description={tones.description} user={tones.user} />
 
       <UtilityPanel>
         <div className="px-4">
-          <ModalButtons initialActiveOfficer={activeOfficer} />
+          <ModalButtons initialActiveOfficer={props.activeOfficer} />
         </div>
 
         <StatusesArea
@@ -198,51 +252,66 @@ export default function OfficerDashboard({
           units={dispatchState.activeOfficers}
           activeUnit={leoState.activeOfficer}
           setActiveUnit={leoState.setActiveOfficer}
-          initialData={activeOfficer}
+          initialData={props.activeOfficer}
         />
       </UtilityPanel>
+    </>
+  );
+}
 
-      {CALLS_911 ? <ActiveCalls initialData={calls} /> : null}
-      <ActiveBolos initialBolos={bolos} />
-      {ACTIVE_WARRANTS ? <ActiveWarrants /> : null}
-      <div className="mt-3">
-        <ActiveOfficers initialOfficers={activeOfficers} />
-        <ActiveDeputies initialDeputies={activeDeputies} />
-      </div>
+function OfficerModals() {
+  const leoState = useLeoState();
+  const modalState = useModal();
+  const { LEO_TICKETS, ACTIVE_WARRANTS } = useFeatureEnabled();
+  const { hasPermissions } = usePermission();
+  const isAdmin = hasPermissions(defaultPermissions.allDefaultAdminPermissions);
 
-      <Modals.SelectOfficerModal />
+  const { currentResult, setCurrentResult } = useNameSearch((state) => ({
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+  }));
 
-      {isAdmin || leoState.activeOfficer ? (
+  function handleRecordCreate(data: Record) {
+    if (!currentResult || currentResult.isConfidential) return;
+
+    setCurrentResult({
+      ...currentResult,
+      Record: [data, ...currentResult.Record],
+    });
+  }
+
+  const showModals = isAdmin ? true : leoState.activeOfficer;
+  if (!showModals) {
+    return null;
+  }
+
+  return (
+    <>
+      <Modals.SwitchDivisionCallsignModal />
+      <Modals.NotepadModal />
+      <Modals.DepartmentInfoModal />
+
+      {/* name search have their own vehicle/weapon search modal */}
+      {modalState.isOpen(ModalIds.NameSearch) ? null : (
         <>
-          <Modals.SwitchDivisionCallsignModal />
-          <Modals.NotepadModal />
+          <Modals.WeaponSearchModal />
+          <Modals.VehicleSearchModal id={ModalIds.VehicleSearch} />
+          <Modals.BusinessSearchModal />
 
-          {/* name search have their own vehicle/weapon search modal */}
-          {isOpen(ModalIds.NameSearch) ? null : (
-            <>
-              <Modals.WeaponSearchModal />
-              <Modals.VehicleSearchModal id={ModalIds.VehicleSearch} />
-              <Modals.BusinessSearchModal />
-
-              {LEO_TICKETS ? (
-                <Modals.ManageRecordModal onCreate={handleRecordCreate} type={RecordType.TICKET} />
-              ) : null}
-              <Modals.ManageRecordModal
-                onCreate={handleRecordCreate}
-                type={RecordType.ARREST_REPORT}
-              />
-              <Modals.ManageRecordModal
-                onCreate={handleRecordCreate}
-                type={RecordType.WRITTEN_WARNING}
-              />
-            </>
-          )}
-          <Modals.NameSearchModal />
-          {!ACTIVE_WARRANTS ? <CreateWarrantModal warrant={null} /> : null}
-          <Modals.CustomFieldSearch />
+          {LEO_TICKETS ? (
+            <Modals.ManageRecordModal onCreate={handleRecordCreate} type={RecordType.TICKET} />
+          ) : null}
+          <Modals.ManageRecordModal onCreate={handleRecordCreate} type={RecordType.ARREST_REPORT} />
+          <Modals.ManageRecordModal
+            onCreate={handleRecordCreate}
+            type={RecordType.WRITTEN_WARNING}
+          />
         </>
-      ) : null}
-    </Layout>
+      )}
+      <Modals.NameSearchModal />
+      {!ACTIVE_WARRANTS ? <CreateWarrantModal warrant={null} /> : null}
+      <Modals.CustomFieldSearch />
+    </>
   );
 }
 

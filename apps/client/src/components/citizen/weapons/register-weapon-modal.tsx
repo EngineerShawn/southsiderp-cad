@@ -1,19 +1,19 @@
 import { useTranslations } from "use-intl";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { useRouter } from "next/router";
 import { WEAPON_SCHEMA } from "@snailycad/schemas";
 import { FormField } from "components/form/FormField";
-import { Loader, Input, Button, Item, AsyncListSearchField } from "@snailycad/ui";
+import { Loader, Input, Button, Item, AsyncListSearchField, SwitchField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import useFetch from "lib/useFetch";
 import { useValues } from "src/context/ValuesContext";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import {
   ValueLicenseType,
   ValueType,
-  Weapon,
-  WeaponValue,
+  type Weapon,
+  type WeaponValue,
   WhitelistStatus,
 } from "@snailycad/types";
 import { handleValidate } from "lib/handleValidate";
@@ -23,7 +23,6 @@ import { filterLicenseType, filterLicenseTypes } from "lib/utils";
 import { toastMessage } from "lib/toastMessage";
 import { CitizenSuggestionsField } from "components/shared/CitizenSuggestionsField";
 import type { PostCitizenWeaponData, PutCitizenWeaponData } from "@snailycad/types/api";
-import { Toggle } from "components/form/Toggle";
 import { ValueSelectField } from "components/form/inputs/value-select-field";
 
 interface Props {
@@ -35,7 +34,7 @@ interface Props {
 
 export function RegisterWeaponModal({ weapon, onClose, onCreate, onUpdate }: Props) {
   const { state, execute } = useFetch();
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const { pathname } = useRouter();
   const { CUSTOM_TEXTFIELD_VALUES } = useFeatureEnabled();
 
@@ -51,7 +50,7 @@ export function RegisterWeaponModal({ weapon, onClose, onCreate, onUpdate }: Pro
   const isLeo = pathname.includes("/officer");
 
   function handleClose() {
-    closeModal(ModalIds.RegisterWeapon);
+    modalState.closeModal(ModalIds.RegisterWeapon);
     onClose?.();
   }
 
@@ -107,11 +106,11 @@ export function RegisterWeaponModal({ weapon, onClose, onCreate, onUpdate }: Pro
     <Modal
       title={t("registerWeapon")}
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.RegisterWeapon)}
+      isOpen={modalState.isOpen(ModalIds.RegisterWeapon)}
       className="w-[600px]"
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setValues, errors, values, isValid }) => (
+        {({ handleChange, setFieldValue, setValues, errors, values, isValid }) => (
           <Form>
             {CUSTOM_TEXTFIELD_VALUES ? (
               <FormField errorMessage={errors.model} label={tVehicle("model")}>
@@ -131,12 +130,15 @@ export function RegisterWeaponModal({ weapon, onClose, onCreate, onUpdate }: Pro
             ) : (
               <AsyncListSearchField<WeaponValue>
                 localValue={values.modelName}
-                setValues={({ localValue, node }) => {
-                  const modelName =
-                    typeof localValue !== "undefined" ? { modelName: localValue } : {};
-                  const model = node ? { model: node.key as string } : {};
-
-                  setValues({ ...values, ...modelName, ...model });
+                onInputChange={(value) => setFieldValue("modelName", value)}
+                onSelectionChange={(node) => {
+                  if (node) {
+                    setValues({
+                      ...values,
+                      modelName: node.value?.value.value ?? node.textValue,
+                      model: node.key as string,
+                    });
+                  }
                 }}
                 errorMessage={errors.model}
                 label={tVehicle("model")}
@@ -174,14 +176,14 @@ export function RegisterWeaponModal({ weapon, onClose, onCreate, onUpdate }: Pro
             </FormField>
 
             {weapon ? (
-              <FormField errorMessage={errors.reApplyForDmv} label={tVehicle("reApplyForDmv")}>
-                <Toggle
-                  disabled={weapon.bofStatus !== WhitelistStatus.DECLINED}
-                  onCheckedChange={handleChange}
-                  name="reApplyForDmv"
-                  value={values.reApplyForDmv ?? false}
-                />
-              </FormField>
+              <SwitchField
+                className="mt-3"
+                isSelected={values.reApplyForDmv ?? false}
+                onChange={(isSelected) => setFieldValue("reApplyForDmv", isSelected)}
+                isDisabled={weapon.bofStatus !== WhitelistStatus.DECLINED}
+              >
+                {tVehicle("reApplyForDmv")}
+              </SwitchField>
             ) : null}
 
             <footer className="flex justify-end mt-5">

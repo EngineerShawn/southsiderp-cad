@@ -1,14 +1,5 @@
 import type * as Types from "@snailycad/types";
 import type { AuditLogActionType } from "./action-types";
-import type {
-  NameChangeRequest,
-  Citizen,
-  User,
-  Officer,
-  EmsFdDeputy,
-  Feature,
-  Warrant,
-} from "@prisma/client";
 
 export type AuditLogActions =
   | UserBanAction
@@ -65,12 +56,18 @@ export type AuditLogActions =
   | ValueAdd
   | ValueUpdate
   | ValueRemove
-  | ValueBulkRemove;
+  | ValueBulkRemove
+  | LeoIncidentsPurged
+  | EmsIncidentsPurged
+  | Signal100Toggled
+  | Call911Create
+  | CitizenRecordRemove
+  | CitizenWarrantRemove;
 
 type BaseAuditLogAction<ActionType extends AuditLogActionType, Previous, New> = {
   type: ActionType;
-} & (Previous extends undefined ? {} : { previous: Previous }) &
-  (New extends undefined ? {} : { new: New });
+} & (Previous extends undefined ? {} : { previous: Partial<Previous> }) &
+  (New extends undefined ? {} : { new: Partial<New> });
 
 export type UsersPrunedAction = BaseAuditLogAction<
   AuditLogActionType.UsersPruned,
@@ -79,68 +76,56 @@ export type UsersPrunedAction = BaseAuditLogAction<
 >;
 export type UserPermissionsUpdateAction = BaseAuditLogAction<
   AuditLogActionType.UserPermissionsUpdate,
-  User | Types.User,
-  User | Types.User
+  Types.User,
+  Types.User
 >;
 export type UserRolesUpdateAction = BaseAuditLogAction<
   AuditLogActionType.UserRolesUpdate,
-  User | Types.User,
-  User | Types.User
+  Types.User,
+  Types.User
 >;
-export type UserBanAction = BaseAuditLogAction<
-  AuditLogActionType.UserBan,
-  undefined,
-  User | Types.User
->;
+export type UserBanAction = BaseAuditLogAction<AuditLogActionType.UserBan, undefined, Types.User>;
 export type UserUnBanAction = BaseAuditLogAction<
   AuditLogActionType.UserUnban,
   undefined,
-  User | Types.User
+  Types.User
 >;
-export type UserUpdate = BaseAuditLogAction<
-  AuditLogActionType.UserUpdate,
-  User | Types.User,
-  User | Types.User
->;
-export type UserDelete = BaseAuditLogAction<
-  AuditLogActionType.UserDelete,
-  undefined,
-  User | Types.User
->;
+export type UserUpdate = BaseAuditLogAction<AuditLogActionType.UserUpdate, Types.User, Types.User>;
+export type UserDelete = BaseAuditLogAction<AuditLogActionType.UserDelete, undefined, Types.User>;
 export type UserTempPassword = BaseAuditLogAction<
   AuditLogActionType.UserTempPassword,
   undefined,
-  User | Types.User
+  Types.User
 >;
 export type UserApiTokenDelete = BaseAuditLogAction<
   AuditLogActionType.UserApiTokenDelete,
   undefined,
-  User | Types.User
+  Types.User
 >;
 export type User2FADelete = BaseAuditLogAction<
   AuditLogActionType.User2FADelete,
   undefined,
-  User | Types.User
+  Types.User
 >;
 export type CitizenUpdate = BaseAuditLogAction<
   AuditLogActionType.CitizenUpdate,
-  Citizen | Types.Citizen,
-  Citizen | Types.Citizen
+  Types.Citizen,
+  Types.Citizen
 >;
 export type CitizenDelete = BaseAuditLogAction<
   AuditLogActionType.CitizenDelete,
   undefined,
-  Citizen | Types.Citizen
+  Types.Citizen
 >;
 export type UnitUpdate = BaseAuditLogAction<
   AuditLogActionType.UnitUpdate,
-  Types.Officer | Types.EmsFdDeputy | Officer | EmsFdDeputy,
-  Types.Officer | Types.EmsFdDeputy | Officer | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy,
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type UnitDelete = BaseAuditLogAction<
   AuditLogActionType.UnitDelete,
   undefined,
-  Types.Officer | Types.EmsFdDeputy | Officer | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type UnitsSetOffDuty = BaseAuditLogAction<
   AuditLogActionType.UnitsSetOffDuty,
@@ -222,18 +207,18 @@ export type CadAPITokenRegenerated = BaseAuditLogAction<
 >;
 export type CADFeaturesUpdate = BaseAuditLogAction<
   AuditLogActionType.CADFeaturesUpdate,
-  Record<Types.Feature | Feature, boolean>,
-  Record<Types.Feature | Feature, boolean>
+  Record<Types.Feature, boolean>,
+  Record<Types.Feature, boolean>
 >;
 export type TemporaryUnitCreate = BaseAuditLogAction<
   AuditLogActionType.TemporaryUnitCreate,
   undefined,
-  Types.Officer | Officer | Types.EmsFdDeputy | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type TemporaryUnitUpdate = BaseAuditLogAction<
   AuditLogActionType.TemporaryUnitUpdate,
-  Types.Officer | Officer | Types.EmsFdDeputy | EmsFdDeputy,
-  Types.Officer | Officer | Types.EmsFdDeputy | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy,
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type UnitsPruned = BaseAuditLogAction<AuditLogActionType.UnitsPruned, undefined, undefined>;
 export type UserWhitelistStatusChange = BaseAuditLogAction<
@@ -285,22 +270,22 @@ export type ExpungementRequestDeclined = BaseAuditLogAction<
 export type NameChangeRequestAccepted = BaseAuditLogAction<
   AuditLogActionType.NameChangeRequestAccepted,
   undefined,
-  NameChangeRequest
+  Types.NameChangeRequest
 >;
 export type NameChangeRequestDeclined = BaseAuditLogAction<
   AuditLogActionType.NameChangeRequestDeclined,
   undefined,
-  NameChangeRequest
+  Types.NameChangeRequest
 >;
 export type ActiveWarrantAccepted = BaseAuditLogAction<
   AuditLogActionType.ActiveWarrantAccepted,
   undefined,
-  Warrant
+  Types.Warrant
 >;
 export type ActiveWarrantDeclined = BaseAuditLogAction<
   AuditLogActionType.ActiveWarrantDeclined,
   undefined,
-  Warrant
+  Types.Warrant
 >;
 
 export type UnitQualificationSuspended = BaseAuditLogAction<
@@ -321,12 +306,12 @@ export type UnitQualificationRemove = BaseAuditLogAction<
 export type UnitDepartmentDeclined = BaseAuditLogAction<
   AuditLogActionType.UnitDepartmentDeclined,
   undefined,
-  Officer | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type UnitDepartmentAccepted = BaseAuditLogAction<
   AuditLogActionType.UnitDepartmentAccepted,
   undefined,
-  Officer | EmsFdDeputy
+  Types.Officer | Types.EmsFdDeputy
 >;
 export type ValueAdd = BaseAuditLogAction<AuditLogActionType.ValueAdd, undefined, any>;
 export type ValueUpdate = BaseAuditLogAction<AuditLogActionType.ValueUpdate, any, any>;
@@ -335,4 +320,34 @@ export type ValueBulkRemove = BaseAuditLogAction<
   AuditLogActionType.ValueBulkRemove,
   undefined,
   string[]
+>;
+export type LeoIncidentsPurged = BaseAuditLogAction<
+  AuditLogActionType.LeoIncidentsPurged,
+  undefined,
+  string[]
+>;
+export type EmsIncidentsPurged = BaseAuditLogAction<
+  AuditLogActionType.EmsIncidentsPurged,
+  undefined,
+  string[]
+>;
+export type Signal100Toggled = BaseAuditLogAction<
+  AuditLogActionType.Signal100Toggled,
+  undefined,
+  { enabled?: boolean; user: Partial<Types.User> }
+>;
+export type Call911Create = BaseAuditLogAction<
+  AuditLogActionType.Call911Create,
+  undefined,
+  Types.Call911
+>;
+export type CitizenRecordRemove = BaseAuditLogAction<
+  AuditLogActionType.CitizenRecordRemove,
+  undefined,
+  string
+>;
+export type CitizenWarrantRemove = BaseAuditLogAction<
+  AuditLogActionType.CitizenWarrantRemove,
+  undefined,
+  string
 >;

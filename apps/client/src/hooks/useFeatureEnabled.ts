@@ -1,12 +1,11 @@
 import * as React from "react";
-import { Feature } from "@snailycad/types";
+import { type CadFeatureOptions, CourthouseType, Feature, LicenseExamType } from "@snailycad/types";
 import { useAuth } from "context/AuthContext";
 
 export const DEFAULT_DISABLED_FEATURES = {
   CUSTOM_TEXTFIELD_VALUES: { isEnabled: false },
   DISCORD_AUTH: { isEnabled: false },
   DMV: { isEnabled: false },
-  USER_API_TOKENS: { isEnabled: false },
   CITIZEN_RECORD_APPROVAL: { isEnabled: false },
   COMMON_CITIZEN_CARDS: { isEnabled: false },
   STEAM_OAUTH: { isEnabled: false },
@@ -22,16 +21,45 @@ export const DEFAULT_DISABLED_FEATURES = {
   FORCE_STEAM_AUTH: { isEnabled: false },
   SIGNAL_100_CITIZEN: { isEnabled: false },
   FORCE_ACCOUNT_PASSWORD: { isEnabled: false },
+  USER_DEFINED_CALLSIGN_COMBINED_UNIT: { isEnabled: false },
+  REQUIRED_CITIZEN_IMAGE: { isEnabled: false },
+  LEO_EDITABLE_CITIZEN_PROFILE: { isEnabled: false },
+  ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER: { isEnabled: false },
+  CITIZEN_RECORD_PAYMENTS: { isEnabled: false },
 } satisfies Partial<Record<Feature, { isEnabled: boolean }>>;
 
-export function useFeatureEnabled(features?: Record<Feature, boolean>) {
+export const DEFAULT_FEATURE_OPTIONS = {
+  [Feature.LICENSE_EXAMS]: Object.values(LicenseExamType),
+  [Feature.COURTHOUSE]: Object.values(CourthouseType),
+} satisfies CadFeatureOptions;
+
+export function useFeatureEnabled(
+  features?: Record<Feature, boolean> & { options?: CadFeatureOptions },
+) {
   const { cad } = useAuth();
   const _features = features ?? cad?.features;
+
+  const options = React.useMemo(() => {
+    const obj = {} as CadFeatureOptions;
+
+    const cadFeatures = _features;
+    for (const _key in _features) {
+      const typedKey = _key as keyof CadFeatureOptions;
+      const option = cadFeatures?.options?.[typedKey] ?? DEFAULT_FEATURE_OPTIONS[typedKey];
+
+      if (option) {
+        // @ts-expect-error the types are overlapping, however, it will correctly assign the correct value
+        obj[typedKey] = option;
+      }
+    }
+
+    return obj;
+  }, [_features]);
 
   const featuresObj = React.useMemo(() => {
     const obj: Record<Feature, boolean> = {} as Record<Feature, boolean>;
 
-    Object.keys(Feature).map((feature) => {
+    Object.keys(Feature).forEach((feature) => {
       const cadFeature = _features?.[feature as Feature];
 
       // @ts-expect-error - this is fine
@@ -43,5 +71,5 @@ export function useFeatureEnabled(features?: Record<Feature, boolean>) {
     return obj;
   }, [_features]);
 
-  return featuresObj;
+  return { ...featuresObj, options };
 }

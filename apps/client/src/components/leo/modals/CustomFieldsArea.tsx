@@ -1,11 +1,11 @@
-import { Button } from "@snailycad/ui";
-import { Infofield } from "components/shared/Infofield";
+import { Button, Infofield } from "@snailycad/ui";
 import { useModal } from "state/modalState";
 import { useTranslations } from "next-intl";
 import type { NameSearchResult } from "state/search/name-search-state";
 import type { VehicleSearchResult } from "state/search/vehicle-search-state";
 import type { WeaponSearchResult } from "state/search/weapon-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
+import { Permissions, usePermission } from "hooks/usePermission";
 
 interface Props {
   currentResult: NonNullable<NameSearchResult | VehicleSearchResult | WeaponSearchResult>;
@@ -13,9 +13,11 @@ interface Props {
 }
 
 export function CustomFieldsArea({ currentResult, isLeo }: Props) {
-  const { openModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Leo");
   const common = useTranslations("Common");
+  const { hasPermissions } = usePermission();
+  const hasManageCustomFieldsPermissions = hasPermissions([Permissions.LeoManageCustomFields]);
 
   if ("isConfidential" in currentResult && currentResult.isConfidential) {
     return null;
@@ -41,12 +43,12 @@ export function CustomFieldsArea({ currentResult, isLeo }: Props) {
         ))
       )}
 
-      {isLeo ? (
+      {isLeo && hasManageCustomFieldsPermissions ? (
         <Button
           size="xs"
           type="button"
           className="mt-2"
-          onPress={() => openModal(ModalIds.ManageCitizenCustomFields)}
+          onPress={() => modalState.openModal(ModalIds.ManageCitizenCustomFields)}
         >
           {t("manageCustomFields")}
         </Button>

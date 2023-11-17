@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient, Rank, ValueType, User } from "@prisma/client";
+import { type Prisma, type PrismaClient, Rank, type ValueType, type User } from "@prisma/client";
 import { Permissions } from "@snailycad/permissions";
 import type { Req } from "@tsed/common";
 import { BadRequest } from "@tsed/exceptions";
@@ -52,6 +52,7 @@ export const permissionsForRouteType: Record<ValueType, Permissions[]> = {
   QUALIFICATION: [Permissions.ManageValueQualification],
   CALL_TYPE: [Permissions.ManageValueCallType],
   VEHICLE_TRIM_LEVEL: [Permissions.ManageValueVehicleTrimLevel],
+  WEAPON_FLAG: [Permissions.ManageValueWeaponFlag],
 };
 
 export function getTypeFromPath(path: string & {}) {
@@ -63,6 +64,13 @@ export function getPermissionsForValuesRequest(request: Req) {
 
   if (!path) {
     throw new BadRequest("Must specify `params.path`");
+  }
+
+  if (path.toLowerCase() === "penal_code_group") {
+    return {
+      permissions: [Permissions.ManageValuePenalCode],
+      fallback: (u: User) => u.rank !== Rank.USER,
+    };
   }
 
   const type = getTypeFromPath(path) as ValueType | "ALL";

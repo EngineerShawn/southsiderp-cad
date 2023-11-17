@@ -28,6 +28,8 @@ export enum AuditLogActionType {
   UnitQualificationRemove = "UnitQualificationRemove",
   UnitDepartmentDeclined = "UnitDepartmentDeclined",
   UnitDepartmentAccepted = "UnitDepartmentAccepted",
+  CitizenRecordRemove = "CitizenRecordRemove",
+  CitizenWarrantRemove = "CitizenWarrantRemove",
 
   BusinessUpdate = "BusinessUpdate",
   BusinessDelete = "BusinessDelete",
@@ -66,4 +68,8 @@ export enum AuditLogActionType {
   ValueBulkRemove = "ValueBulkRemove",
 
   Calls911Purge = "Calls911Purge",
+  LeoIncidentsPurged = "LeoIncidentsPurged",
+  EmsIncidentsPurged = "EmsIncidentsPurged",
+  Signal100Toggled = "Signal100Toggled",
+  Call911Create = "Call911Create",
 }

@@ -13,6 +13,7 @@ export enum Permissions {
   ViewCitizenLogs = "ViewCitizenLogs",
   ViewLicenseExams = "ViewLicenseExams",
   ManageLicenseExams = "ManageLicenseExams",
+  SetUserDefinedCallsignOnOfficer = "SetUserDefinedCallsignOnOfficer",
 
   ViewCustomFields = "ViewCustomFields",
   ManageCustomFields = "ManageCustomFields",
@@ -23,13 +24,23 @@ export enum Permissions {
   ViewCustomRoles = "ViewCustomRoles",
   ManageWarrants = "ManageWarrants",
   ManageAwardsAndQualifications = "ManageAwardsAndQualifications",
+  PurgeLeoIncidents = "PurgeLeoIncidents",
+  LeoManageCustomFields = "LeoManageCustomFields",
+  LeoManageCitizenProfile = "LeoManageCitizenProfile",
 
   Dispatch = "Dispatch",
+  ManageSmartSigns = "ManageSmartSigns",
+  ManageSmartMotorwaySigns = "ManageSmartMotorwaySigns",
 
   // ems-fd
   EmsFd = "EmsFd",
   ViewEmsFdIncidents = "ViewEmsFdIncidents",
   ManageEmsFdIncidents = "ManageEmsFdIncidents",
+  DeclareCitizenDead = "DeclareCitizenDead",
+  PurgeEmsFdIncidents = "PurgeEmsFdIncidents",
+  ViewDeadCitizens = "ViewDeadCitizens",
+  ManageDeadCitizens = "ManageDeadCitizens",
+  SetUserDefinedCallsignOnEmsFd = "SetUserDefinedCallsignOnEmsFd",
 
   //  citizen related
   ViewTaxiCalls = "ViewTaxiCalls",
@@ -101,16 +112,13 @@ export enum Permissions {
   ManageValueEmergencyVehicle = "ManageValueEmergencyVehicle",
   ManageValueAddressFlag = "ManageValueAddressFlag",
   ManageValueVehicleTrimLevel = "ManageValueVehicleTrimLevel",
-
-  // other
-  UsePersonalApiToken = "UsePersonalApiToken",
+  ManageValueWeaponFlag = "ManageValueWeaponFlag",
 
   // deprecated
-
   ViewDLExams = "ViewDLExams",
   ManageDLExams = "ManageDLExams",
   ViewWeaponExams = "ViewWeaponExams",
   ManageWeaponExams = "ManageWeaponExams",
 }
 
-export const allPermissions = Object.values(Permissions);
+export const allPermissions = Object.keys(Permissions);

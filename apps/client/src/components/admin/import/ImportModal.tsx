@@ -2,11 +2,11 @@ import * as React from "react";
 import { FormField } from "components/form/FormField";
 import { Button, Input, Loader } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import useFetch from "lib/useFetch";
 import { useModal } from "state/modalState";
 import { useTranslations } from "use-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import type * as APITypes from "@snailycad/types/api";
 
 type ImportData =
@@ -24,21 +24,22 @@ export function ImportModal<T extends ImportData>({ onImport, id, url }: Props<T
   const [file, setFile] = React.useState<File | null>(null);
 
   const { state, execute } = useFetch();
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Values");
+  const common = useTranslations("Common");
 
   const data = {
     [ModalIds.ImportCitizens]: {
       docsUrl: "https://docs.snailycad.org/docs/developer/importing-values#citizens",
-      title: "Import Citizen",
+      title: t("importCitizens"),
     },
     [ModalIds.ImportVehicles]: {
       docsUrl: "https://docs.snailycad.org/docs/developer/importing-values#vehicles",
-      title: "Import Vehicles",
+      title: t("importVehicles"),
     },
     [ModalIds.ImportWeapons]: {
       docsUrl: "https://docs.snailycad.org/docs/developer/importing-values#weapons",
-      title: "Import Weapons",
+      title: t("importWeapons"),
     },
   };
 
@@ -62,7 +63,7 @@ export function ImportModal<T extends ImportData>({ onImport, id, url }: Props<T
 
     if (Array.isArray(json)) {
       onImport(json);
-      closeModal(id);
+      modalState.closeModal(id);
     }
   }
 
@@ -74,8 +75,8 @@ export function ImportModal<T extends ImportData>({ onImport, id, url }: Props<T
     <Modal
       className="w-[600px]"
       title={data[id].title}
-      onClose={() => closeModal(id)}
-      isOpen={isOpen(id)}
+      onClose={() => modalState.closeModal(id)}
+      isOpen={modalState.isOpen(id)}
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
         {({ handleChange, values, errors }) => (
@@ -97,16 +98,16 @@ export function ImportModal<T extends ImportData>({ onImport, id, url }: Props<T
             </FormField>
 
             <a className="underline" target="_blank" rel="noreferrer" href={data[id].docsUrl}>
-              Documentation
+              {common("documentation")}
             </a>
 
             <footer className="flex justify-end mt-5">
-              <Button type="reset" onPress={() => closeModal(id)} variant="cancel">
-                Cancel
+              <Button type="reset" onPress={() => modalState.closeModal(id)} variant="cancel">
+                {common("cancel")}
               </Button>
               <Button className="flex items-center" disabled={state === "loading"} type="submit">
                 {state === "loading" ? <Loader className="mr-2" /> : null}
-                {"Import"}
+                {t("import")}
               </Button>
             </footer>
           </Form>

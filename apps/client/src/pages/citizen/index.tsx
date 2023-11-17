@@ -7,7 +7,7 @@ import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { Button, buttonVariants } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { requestAll } from "lib/utils";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
@@ -35,7 +35,9 @@ const ManageCallModal = dynamic(
   { ssr: false },
 );
 const Manage911CallModal = dynamic(
-  async () => (await import("components/dispatch/modals/Manage911CallModal")).Manage911CallModal,
+  async () =>
+    (await import("components/dispatch/active-calls/modals/manage-911-call-modal"))
+      .Manage911CallModal,
   { ssr: false },
 );
 
@@ -51,16 +53,17 @@ export default function CitizenPage({ citizens }: Props) {
   const t = useTranslations("Citizen");
   const { SIGNAL_100_CITIZEN, TOW, TAXI, WEAPON_REGISTRATION, CALLS_911 } = useFeatureEnabled();
 
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const [modal, setModal] = React.useState<string | null>(null);
   const { showAop, areaOfPlay } = useAreaOfPlay();
   const signal100 = useSignal100();
 
   return (
     <Layout className="dark:text-white">
-      {SIGNAL_100_CITIZEN ? (
-        <signal100.Component enabled={signal100.enabled} audio={signal100.audio} />
-      ) : null}
+      <signal100.Component
+        enabled={SIGNAL_100_CITIZEN && signal100.enabled}
+        audio={signal100.audio}
+      />
 
       <header className="my-3">
         <Title className="mb-2">{t("citizens")}</Title>
@@ -71,19 +74,27 @@ export default function CitizenPage({ citizens }: Props) {
         <li>
           <Link
             href="/citizen/create"
-            className={`rounded-md transition-all p-1 px-4 ${buttonVariants.default} block w-full`}
+            className={buttonVariants({
+              className: "rounded-md transition-all p-1 px-4 block w-full",
+            })}
           >
             {t("createCitizen")}
           </Link>
         </li>
         <li>
-          <Button onPress={() => openModal(ModalIds.RegisterVehicle)} className="text-left w-full">
+          <Button
+            onPress={() => modalState.openModal(ModalIds.RegisterVehicle)}
+            className="text-left w-full"
+          >
             {t("registerVehicle")}
           </Button>
         </li>
         {WEAPON_REGISTRATION ? (
           <li>
-            <Button onPress={() => openModal(ModalIds.RegisterWeapon)} className="text-left w-full">
+            <Button
+              onPress={() => modalState.openModal(ModalIds.RegisterWeapon)}
+              className="text-left w-full"
+            >
               {t("registerWeapon")}
             </Button>
           </li>
@@ -94,7 +105,7 @@ export default function CitizenPage({ citizens }: Props) {
             <Button
               onPress={() => {
                 setModal("tow");
-                openModal(ModalIds.ManageTowCall);
+                modalState.openModal(ModalIds.ManageTowCall);
               }}
               className="text-left w-full"
             >
@@ -107,7 +118,7 @@ export default function CitizenPage({ citizens }: Props) {
             <Button
               onPress={() => {
                 setModal("taxi");
-                openModal(ModalIds.ManageTowCall);
+                modalState.openModal(ModalIds.ManageTowCall);
               }}
               className="text-left w-full"
             >
@@ -117,7 +128,10 @@ export default function CitizenPage({ citizens }: Props) {
         ) : null}
         {CALLS_911 ? (
           <li>
-            <Button onPress={() => openModal(ModalIds.Manage911Call)} className="text-left w-full">
+            <Button
+              onPress={() => modalState.openModal(ModalIds.Manage911Call)}
+              className="text-left w-full"
+            >
               {t("create911Call")}
             </Button>
           </li>
@@ -126,9 +140,15 @@ export default function CitizenPage({ citizens }: Props) {
 
       <CitizenList citizens={citizens} />
 
-      <RegisterVehicleModal onCreate={() => closeModal(ModalIds.RegisterVehicle)} vehicle={null} />
+      <RegisterVehicleModal
+        onCreate={() => modalState.closeModal(ModalIds.RegisterVehicle)}
+        vehicle={null}
+      />
       {WEAPON_REGISTRATION ? (
-        <RegisterWeaponModal onCreate={() => closeModal(ModalIds.RegisterWeapon)} weapon={null} />
+        <RegisterWeaponModal
+          onCreate={() => modalState.closeModal(ModalIds.RegisterWeapon)}
+          weapon={null}
+        />
       ) : null}
       {CALLS_911 ? <Manage911CallModal call={null} /> : null}
       {TOW || TAXI ? <ManageCallModal isTow={modal === "tow"} call={null} /> : null}

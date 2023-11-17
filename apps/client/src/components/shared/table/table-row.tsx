@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "@sentry/nextjs";
 import { TableActionsAlignment } from "@snailycad/types";
-import { Cell, flexRender, Row, RowData } from "@tanstack/react-table";
+import { type Cell, flexRender, type Row, type RowData } from "@tanstack/react-table";
 import { classNames } from "lib/classNames";
 
 interface Props<TData extends RowData> {
@@ -47,7 +47,7 @@ function TableCell<TData extends RowData>(
   const isNone = props.tableActionsAlignment === TableActionsAlignment.NONE;
   const dir = isNone ? "" : isLeft ? "left-0" : "right-0";
 
-  const hasStyle = !!props.rowProps?.style;
+  const hasStyle = Boolean(props.rowProps?.style);
   const bgColor = hasStyle
     ? null
     : props.rowProps?.className?.includes("bg")

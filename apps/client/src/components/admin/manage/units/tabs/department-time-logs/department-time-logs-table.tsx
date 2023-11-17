@@ -1,10 +1,9 @@
 import * as React from "react";
 import { getUnitDepartment, makeUnitName } from "lib/utils";
-import { useTranslations } from "use-intl";
-import { DatePickerField, SelectField, TabsContent } from "@snailycad/ui";
+import { useFormatter, useTranslations } from "use-intl";
+import { DatePickerField, FullDate, SelectField, TabsContent } from "@snailycad/ui";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
-import { FullDate } from "components/shared/FullDate";
 import { useDebouncedValue } from "hooks/shared/use-debounced-value";
 import { SearchArea } from "components/shared/search/search-area";
 import type {
@@ -23,6 +22,12 @@ export function DepartmentTimeLogsTab() {
   const asyncTable = useAsyncTable<DepartmentReturnType>({
     search,
     totalCount: 0,
+    sortingSchema: {
+      firstSeen: "firstSeen",
+      lastSeen: "lastSeen",
+      department: "department",
+      hours: "hours",
+    },
     fetchOptions: {
       path: `/admin/manage/units/department-time-logs/${groupedBy}`,
       onResponse: (
@@ -36,7 +41,11 @@ export function DepartmentTimeLogsTab() {
 
   const t = useTranslations();
   const { generateCallsign } = useGenerateCallsign();
-  const tableState = useTableState({ pagination: asyncTable.pagination });
+  const tableState = useTableState({
+    sorting: asyncTable.sorting,
+    pagination: asyncTable.pagination,
+  });
+  const { number } = useFormatter();
 
   return (
     <TabsContent value="departmentTimeLogs">
@@ -86,7 +95,7 @@ export function DepartmentTimeLogsTab() {
         <Table
           tableState={tableState}
           data={asyncTable.items.map((item) => {
-            const hours = item.hours < 1 ? "Less than 1" : item.hours;
+            const hours = item.hours < 1 ? "Less than 1" : number(item.hours);
             const isGroupedByDepartments = "department" in item;
             const id = isGroupedByDepartments ? item.departmentId : item.unitId;
 

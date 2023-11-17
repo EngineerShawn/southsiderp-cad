@@ -1,4 +1,4 @@
-import { useMounted } from "@casper124578/useful";
+import { useMounted } from "@casperiv/useful";
 import type { cad } from "@snailycad/types";
 
 interface Props {
@@ -21,7 +21,7 @@ export function VersionDisplay({ cad }: Props) {
   );
 }
 
-function Link(props: JSX.IntrinsicElements["a"]) {
+function Link(props: React.JSX.IntrinsicElements["a"]) {
   return (
     <a
       {...props}

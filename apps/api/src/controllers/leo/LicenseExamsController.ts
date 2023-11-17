@@ -1,8 +1,8 @@
 import {
-  Prisma,
-  LicenseExam,
-  DriversLicenseCategoryValue,
-  LicenseExamType,
+  type Prisma,
+  type LicenseExam,
+  type DriversLicenseCategoryValue,
+  type LicenseExamType,
   Feature,
 } from "@prisma/client";
 import { LicenseExamPassType, LicenseExamStatus } from "@snailycad/types";
@@ -12,7 +12,7 @@ import { NotFound } from "@tsed/exceptions";
 import { ContentType, Delete, Get, Post, Put } from "@tsed/schema";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { manyToManyHelper } from "lib/data/many-to-many";
 import type * as APITypes from "@snailycad/types/api";
@@ -31,10 +31,9 @@ const licenseExamIncludes = {
 export class LicenseExamsController {
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor,
     permissions: [Permissions.ViewLicenseExams, Permissions.ManageLicenseExams],
   })
-  async getAlllicenseExams(
+  async getAllLicenseExams(
     @QueryParams("skip", Number) skip = 0,
     @QueryParams("query", String) query = "",
   ): Promise<APITypes.GetLicenseExamsData> {
@@ -64,7 +63,6 @@ export class LicenseExamsController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor,
     permissions: [Permissions.ManageLicenseExams],
   })
   async createlicenseExam(@BodyParams() body: unknown): Promise<APITypes.PostLicenseExamsData> {
@@ -83,7 +81,9 @@ export class LicenseExamsController {
       include: { categories: true },
     });
 
-    const connectDisconnectArr = manyToManyHelper([], data.categories as string[]);
+    const connectDisconnectArr = manyToManyHelper([], data.categories as string[], {
+      showUpsert: false,
+    });
     await prisma.$transaction(
       connectDisconnectArr.map((item) =>
         prisma.licenseExam.update({
@@ -107,7 +107,6 @@ export class LicenseExamsController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor,
     permissions: [Permissions.ManageLicenseExams],
   })
   async updatelicenseExam(
@@ -128,6 +127,7 @@ export class LicenseExamsController {
     const connectDisconnectArr = manyToManyHelper(
       exam.categories.map((v) => v.id),
       data.categories as string[],
+      { showUpsert: false },
     );
 
     await prisma.$transaction(
@@ -159,7 +159,6 @@ export class LicenseExamsController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor,
     permissions: [Permissions.ManageLicenseExams],
   })
   async deletelicenseExam(
@@ -208,7 +207,8 @@ export class LicenseExamsController {
     if (!citizen) return;
 
     const connectDisconnectArr = manyToManyHelper(citizen.dlCategory, exam.categories, {
-      accessor: "id",
+      customAccessorKey: "id",
+      showUpsert: false,
     });
 
     const prismaNames = {
@@ -216,6 +216,8 @@ export class LicenseExamsController {
       FIREARM: "weaponLicenseId",
       WATER: "waterLicenseId",
       PILOT: "pilotLicenseId",
+      HUNTING: "huntingLicenseId",
+      FISHING: "fishingLicenseId",
     } as const;
     const prismaName = prismaNames[exam.type];
 

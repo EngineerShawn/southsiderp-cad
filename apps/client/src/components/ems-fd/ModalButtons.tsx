@@ -1,22 +1,26 @@
 import { Button } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
-import { ActiveToneType, Rank, ShouldDoType } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
+import { ActiveToneType, ShouldDoType } from "@snailycad/types";
 import { useModal } from "state/modalState";
 import { useTranslations } from "use-intl";
-import { ActiveDeputy, useEmsFdState } from "state/ems-fd-state";
+import { type ActiveDeputy, useEmsFdState } from "state/ems-fd-state";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { makeUnitName } from "lib/utils";
 import useFetch from "lib/useFetch";
 import type { PostEmsFdTogglePanicButtonData } from "@snailycad/types/api";
 import { useActiveDispatchers } from "hooks/realtime/use-active-dispatchers";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { useMounted } from "@casper124578/useful";
+import { useMounted } from "@casperiv/useful";
 import { usePermission } from "hooks/usePermission";
 import { defaultPermissions } from "@snailycad/permissions";
 import { useValues } from "context/ValuesContext";
 import { isUnitCombinedEmsFd } from "@snailycad/utils";
 
 import dynamic from "next/dynamic";
+import { ActiveCallColumn } from "components/dispatch/active-units/officers/columns/active-call-column";
+import { ActiveIncidentColumn } from "components/dispatch/active-units/officers/columns/active-incident-column";
+import { PrivateMessagesButton } from "components/leo/private-messages/private-messages-button";
+import { PrivateMessagesModal } from "components/dispatch/active-units/private-messages/private-messages-modal";
 
 const TonesModal = dynamic(
   async () => (await import("components/dispatch/modals/tones-modal")).TonesModal,
@@ -38,8 +42,16 @@ const buttons: MButton[] = [
     modalId: ModalIds.CreateMedicalRecord,
   },
   {
+    nameKey: ["Ems", "createDoctorVisit"],
+    modalId: ModalIds.CreateDoctorVisit,
+  },
+  {
     nameKey: ["Leo", "notepad"],
     modalId: ModalIds.Notepad,
+  },
+  {
+    nameKey: ["Leo", "departmentInformation"],
+    modalId: ModalIds.DepartmentInfo,
   },
 ];
 
@@ -50,7 +62,7 @@ export function ModalButtons({
 }) {
   const _activeDeputy = useEmsFdState((s) => s.activeDeputy);
   const isMounted = useMounted();
-  const { openModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const { generateCallsign } = useGenerateCallsign();
   const { execute } = useFetch();
@@ -64,10 +76,7 @@ export function ModalButtons({
   );
 
   const { hasPermissions } = usePermission();
-  const isAdmin = hasPermissions(
-    defaultPermissions.allDefaultAdminPermissions,
-    (u) => u.rank !== Rank.USER,
-  );
+  const isAdmin = hasPermissions(defaultPermissions.allDefaultAdminPermissions);
 
   const isButtonDisabled = isAdmin
     ? false
@@ -95,10 +104,39 @@ export function ModalButtons({
   return (
     <div className="py-2">
       {nameAndCallsign && activeDeputy ? (
-        <p className="text-lg">
-          <span className="font-semibold">{t("Ems.activeDeputy")}: </span>
-          {nameAndCallsign}
-        </p>
+        <div className="flex items-center gap-x-12">
+          <p>
+            <span className="font-semibold">{t("Ems.activeDeputy")}: </span>
+            {nameAndCallsign}
+          </p>
+
+          <p className="flex items-center gap-x-1">
+            <span className="font-semibold">{t("Leo.activeCall")}: </span>
+            <ActiveCallColumn
+              size="sm"
+              callId={activeDeputy.activeCallId}
+              isDispatch={false}
+              unitId={activeDeputy.id}
+            />
+          </p>
+
+          <p className="flex items-center gap-x-1">
+            <span className="font-semibold">{t("Leo.incident")}: </span>
+            <ActiveIncidentColumn
+              size="sm"
+              incidentId={activeDeputy.activeIncidentId}
+              isDispatch={false}
+              unitId={activeDeputy.id}
+            />
+          </p>
+
+          <p className="flex items-center gap-x-1">
+            <span className="font-semibold">{t("Leo.privateMessages")}: </span>
+            <PrivateMessagesButton unit={activeDeputy} />
+          </p>
+
+          <PrivateMessagesModal />
+        </div>
       ) : null}
 
       <div className="mt-2 modal-buttons-grid">
@@ -108,7 +146,7 @@ export function ModalButtons({
             key={idx}
             disabled={isButtonDisabled}
             title={isButtonDisabled ? "Go on-duty before continuing" : button.nameKey[1]}
-            onPress={() => openModal(button.modalId)}
+            onPress={() => modalState.openModal(button.modalId)}
           >
             {t(button.nameKey.join("."))}
           </Button>
@@ -127,7 +165,10 @@ export function ModalButtons({
 
         {!hasActiveDispatchers && TONES ? (
           <>
-            <Button disabled={isButtonDisabled} onPress={() => openModal(ModalIds.Tones)}>
+            <Button
+              disabled={isButtonDisabled}
+              onPress={() => modalState.openModal(ModalIds.Tones)}
+            >
               {t("Leo.tones")}
             </Button>
 

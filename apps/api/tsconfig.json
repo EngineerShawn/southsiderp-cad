@@ -3,23 +3,18 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "commonjs",
-    "esModuleInterop": true,
     "moduleResolution": "node",
     "importHelpers": true,
-    "resolveJsonModule": true,
+    "verbatimModuleSyntax": false,
 
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "declaration": false,
     "allowSyntheticDefaultImports": true,
-    "allowJs": true,
-    "skipLibCheck": true,
-
     "outDir": "dist",
-    "strict": true,
-    "lib": ["esnext"],
+
     "baseUrl": ".",
     "paths": {
+      "~/*": ["./src/*"],
       "utils/*": ["./src/utils/*"],
       "lib/*": ["./src/lib/*"],
       "middlewares/*": ["./src/middlewares/*"],
@@ -33,6 +28,9 @@
     "sourceRoot": "/"
   },
   "ts-node": {
-    "swc": true
+    "transpileOnly": true,
+    "swc": true,
+    "files": true,
+    "require": ["tsconfig-paths/register"]
   }
 }

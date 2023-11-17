@@ -9,17 +9,15 @@ import {
   isEmpty,
 } from "lib/utils";
 import { useTranslations } from "use-intl";
-import { Button, buttonVariants, TabsContent } from "@snailycad/ui";
+import { Button, buttonVariants, SelectField, Status, TabsContent } from "@snailycad/ui";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import useFetch from "lib/useFetch";
 import { useRouter } from "next/router";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
-import { Status } from "components/shared/Status";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { classNames } from "lib/classNames";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { OfficerRank } from "components/leo/OfficerRank";
 import type {
   DeleteManageUnitByIdData,
@@ -30,8 +28,6 @@ import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { getSelectedTableRows } from "hooks/shared/table/use-table-state";
 import { SearchArea } from "components/shared/search/search-area";
 import dynamic from "next/dynamic";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
 import { useValues } from "context/ValuesContext";
 import { useImageUrl } from "hooks/useImageUrl";
 import { ImageWrapper } from "components/shared/image-wrapper";
@@ -71,14 +67,11 @@ export function AllUnitsTab({ units }: Props) {
   const tableState = useTableState({ pagination: asyncTable.pagination });
 
   const { hasPermissions } = usePermission();
-  const hasManagePermissions = hasPermissions([Permissions.ManageUnits], true);
-  const hasManageAwardsPermissions = hasPermissions(
-    [Permissions.ManageAwardsAndQualifications],
-    true,
-  );
+  const hasManagePermissions = hasPermissions([Permissions.ManageUnits]);
+  const hasManageAwardsPermissions = hasPermissions([Permissions.ManageAwardsAndQualifications]);
 
-  const hasDeletePermissions = hasPermissions([Permissions.DeleteUnits], true);
-  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers], true);
+  const hasDeletePermissions = hasPermissions([Permissions.DeleteUnits]);
+  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers]);
   const { state, execute } = useFetch();
 
   const t = useTranslations();
@@ -86,13 +79,13 @@ export function AllUnitsTab({ units }: Props) {
   const { generateCallsign } = useGenerateCallsign();
   const router = useRouter();
   const { DIVISIONS, BADGE_NUMBERS } = useFeatureEnabled();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { department } = useValues();
   const { makeImageUrl } = useImageUrl();
 
   function handleDeleteClick(unit: Unit) {
     unitState.setTempId(unit.id);
-    openModal(ModalIds.AlertDeleteUnit);
+    modalState.openModal(ModalIds.AlertDeleteUnit);
   }
 
   async function handleDeleteUnit() {
@@ -105,7 +98,7 @@ export function AllUnitsTab({ units }: Props) {
 
     if (json) {
       unitState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteUnit);
+      modalState.closeModal(ModalIds.AlertDeleteUnit);
 
       router.replace({
         pathname: router.pathname,
@@ -159,7 +152,7 @@ export function AllUnitsTab({ units }: Props) {
       ) : null}
 
       {hasManagePermissions && asyncTable.items.length >= 1 ? (
-        <Button onPress={() => openModal(ModalIds.PruneUnits)} className="mt-3 ml-2">
+        <Button onPress={() => modalState.openModal(ModalIds.PruneUnits)} className="mt-3 ml-2">
           {t("Management.pruneUnits")}
         </Button>
       ) : null}
@@ -168,20 +161,20 @@ export function AllUnitsTab({ units }: Props) {
         search={{ search, setSearch }}
         asyncTable={asyncTable}
         totalCount={units.totalCount}
+        className="grid grid-cols-3"
       >
-        <FormField className="w-full max-w-[15rem]" label={t("Leo.department")}>
-          <Select
-            isClearable
-            value={asyncTable.filters?.departmentId ?? null}
-            onChange={(event) =>
-              asyncTable.setFilters((prev) => ({ ...prev, departmentId: event.target.value }))
-            }
-            values={department.values.map((v) => ({
-              label: v.value.value,
-              value: v.id,
-            }))}
-          />
-        </FormField>
+        <SelectField
+          label={t("Leo.department")}
+          isClearable
+          selectedKey={asyncTable.filters?.departmentId ?? null}
+          options={department.values.map((value) => ({
+            label: value.value.value,
+            value: value.id,
+          }))}
+          onSelectionChange={(value) => {
+            asyncTable.setFilters((prev) => ({ ...prev, departmentId: value }));
+          }}
+        />
       </SearchArea>
 
       {asyncTable.noItemsAvailable ? (
@@ -217,7 +210,7 @@ export function AllUnitsTab({ units }: Props) {
                 hasViewUsersPermissions && unit.user ? (
                   <Link
                     href={`/admin/manage/users/${unit.userId}`}
-                    className={`rounded-md transition-all p-1 px-1.5 ${buttonVariants.default}`}
+                    className={buttonVariants({ size: "xs" })}
                   >
                     {unit.user.username}
                   </Link>
@@ -226,7 +219,7 @@ export function AllUnitsTab({ units }: Props) {
                   unit.user?.username ?? t("Leo.temporaryUnit")
                 ),
               callsign: generateCallsign(unit),
-              badgeNumber: unit.badgeNumber,
+              badgeNumberString: unit.badgeNumberString,
               department: formatOfficerDepartment(unit) ?? common("none"),
               departmentStatus: <Status fallback="—">{departmentStatus}</Status>,
               division: formatUnitDivisions(unit),
@@ -239,7 +232,7 @@ export function AllUnitsTab({ units }: Props) {
                   {hasManagePermissions || hasManageAwardsPermissions ? (
                     <Link
                       href={`/admin/manage/units/${unit.id}`}
-                      className={classNames("p-0.5 px-2 rounded-md", buttonVariants.success)}
+                      className={buttonVariants({ variant: "success", size: "xs" })}
                     >
                       {common("manage")}
                     </Link>
@@ -263,7 +256,9 @@ export function AllUnitsTab({ units }: Props) {
             { header: common("name"), accessorKey: "name" },
             { header: common("user"), accessorKey: "user" },
             { header: t("Leo.callsign"), accessorKey: "callsign" },
-            BADGE_NUMBERS ? { header: t("Leo.badgeNumber"), accessorKey: "badgeNumber" } : null,
+            BADGE_NUMBERS
+              ? { header: t("Leo.badgeNumber"), accessorKey: "badgeNumberString" }
+              : null,
             { header: t("Leo.department"), accessorKey: "department" },
             DIVISIONS ? { header: t("Leo.division"), accessorKey: "division" } : null,
             { header: t("Leo.rank"), accessorKey: "rank" },

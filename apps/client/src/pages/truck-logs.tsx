@@ -6,7 +6,7 @@ import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { requestAll } from "lib/utils";
 import type { GetServerSideProps } from "next";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import useFetch from "lib/useFetch";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
@@ -18,12 +18,13 @@ const AlertModal = dynamic(async () => (await import("components/modal/AlertModa
   ssr: false,
 });
 const ManageTruckLogModal = dynamic(
-  async () => (await import("components/truck-logs/manage-truck-log-modal")).ManageTruckLogModal,
+  async () =>
+    (await import("components/citizen/truck-logs/manage-truck-log-modal")).ManageTruckLogModal,
   { ssr: false },
 );
 
 export default function TruckLogs({ logs: initialLogs, totalCount }: GetTruckLogsData) {
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
 
   const asyncTable = useAsyncTable({
     fetchOptions: {
@@ -52,18 +53,18 @@ export default function TruckLogs({ logs: initialLogs, totalCount }: GetTruckLog
     if (json) {
       asyncTable.remove(tempLog.id);
       logState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteTruckLog);
+      modalState.closeModal(ModalIds.AlertDeleteTruckLog);
     }
   }
 
   function handleEditClick(log: GetTruckLogsData["logs"][number]) {
     logState.setTempId(log.id);
-    openModal(ModalIds.ManageTruckLog);
+    modalState.openModal(ModalIds.ManageTruckLog);
   }
 
   function handleDeleteClick(log: GetTruckLogsData["logs"][number]) {
     logState.setTempId(log.id);
-    openModal(ModalIds.AlertDeleteTruckLog);
+    modalState.openModal(ModalIds.AlertDeleteTruckLog);
   }
 
   return (
@@ -71,7 +72,9 @@ export default function TruckLogs({ logs: initialLogs, totalCount }: GetTruckLog
       <header className="flex items-center justify-between">
         <Title>{t("truckLogs")}</Title>
 
-        <Button onPress={() => openModal(ModalIds.ManageTruckLog)}>{t("createTruckLog")}</Button>
+        <Button onPress={() => modalState.openModal(ModalIds.ManageTruckLog)}>
+          {t("createTruckLog")}
+        </Button>
       </header>
 
       {asyncTable.noItemsAvailable ? (

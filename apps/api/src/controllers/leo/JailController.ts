@@ -3,9 +3,10 @@ import { ContentType, Delete, Description, Get } from "@tsed/schema";
 import { QueryParams, BodyParams, PathParams } from "@tsed/platform-params";
 import { NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { leoProperties } from "lib/leo/activeOfficer";
-import { MiscCadSettings, ReleaseType } from "@prisma/client";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { leoProperties } from "utils/leo/includes";
+
+import { type MiscCadSettings, ReleaseType } from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { RELEASE_CITIZEN_SCHEMA } from "@snailycad/schemas";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
@@ -41,7 +42,6 @@ export class JailController {
   @Description("Get all the citizens who are jailed")
   @UsePermissions({
     permissions: [Permissions.ViewJail, Permissions.ManageJail],
-    fallback: (u) => u.isLeo,
   })
   async getImprisonedCitizens(
     @Context("cad") cad: { miscCadSettings: MiscCadSettings },
@@ -70,8 +70,8 @@ export class JailController {
     if (jailTimeScale) {
       const citizenIdsToUpdate = {} as Record<string, string[]>;
 
-      citizens.map((citizen) => {
-        citizen.Record.map((record) => {
+      citizens.forEach((citizen) =>
+        citizen.Record.forEach((record) => {
           if (record.type === "ARREST_REPORT") {
             const totalJailTime = record.violations.reduce((ac, cv) => ac + (cv.jailTime || 0), 0);
             const time = convertToJailTimeScale(totalJailTime, jailTimeScale);
@@ -85,8 +85,8 @@ export class JailController {
               ];
             }
           }
-        });
-      });
+        }),
+      );
 
       await Promise.all(
         Object.entries(citizenIdsToUpdate).map(async ([citizenId, recordIds]) => {
@@ -111,7 +111,6 @@ export class JailController {
   @Description("Release a citizen by its id and type (time out / released by)")
   @UsePermissions({
     permissions: [Permissions.ManageJail],
-    fallback: (u) => u.isLeo,
   })
   async releaseCitizen(
     @PathParams("id") id: string,

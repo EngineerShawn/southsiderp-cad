@@ -1,20 +1,19 @@
 import { Table, useTableState } from "components/shared/Table";
 import { useTranslations } from "use-intl";
-import { Button, TabsContent } from "@snailycad/ui";
+import { Button, Status, TabsContent } from "@snailycad/ui";
 import { useModal } from "state/modalState";
 import { useNameSearch } from "state/search/name-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 
 import type { Weapon } from "@snailycad/types";
 import { useWeaponSearch } from "state/search/weapon-search-state";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { Status } from "components/shared/Status";
 
 export function NameSearchWeaponsTab() {
   const t = useTranslations();
   const common = useTranslations("Common");
   const currentResult = useNameSearch((state) => state.currentResult);
-  const { openModal } = useModal();
+  const modalState = useModal();
   const setWeaponResult = useWeaponSearch((state) => state.setCurrentResult);
   const tableState = useTableState();
   const { BUREAU_OF_FIREARMS } = useFeatureEnabled();
@@ -23,8 +22,8 @@ export function NameSearchWeaponsTab() {
     if (!currentResult || currentResult.isConfidential) return;
 
     // todo: set correct data for `allCustomFields` and `customFields`
-    setWeaponResult({ allCustomFields: [], customFields: [], ...weapon, citizen: currentResult });
-    openModal(ModalIds.WeaponSearchWithinName);
+    setWeaponResult({ ...weapon, allCustomFields: [], customFields: [], citizen: currentResult });
+    modalState.openModal(ModalIds.WeaponSearchWithinName);
   }
 
   if (!currentResult || currentResult.isConfidential) {

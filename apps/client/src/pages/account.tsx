@@ -3,38 +3,36 @@ import { Layout } from "components/Layout";
 import { TabList } from "@snailycad/ui";
 import type { GetServerSideProps } from "next";
 import { useTranslations } from "next-intl";
-
 import { useAuth } from "context/AuthContext";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { useMounted } from "@casper124578/useful";
+import { useMounted } from "@casperiv/useful";
 import { Title } from "components/shared/Title";
 import { toastMessage } from "lib/toastMessage";
 import { canUseThirdPartyConnections } from "lib/utils";
-import { usePermission, Permissions } from "hooks/usePermission";
-import { getAvailableSounds, Sounds } from "lib/server/getAvailableSounds.server";
-import { AccountInfoTab } from "components/account/AccountInfoTab";
+import { getAvailableSounds, type Sounds } from "lib/server/getAvailableSounds.server";
+import { AccountInfoTab } from "components/account/account-info-tab";
 
 const AccountSettingsTab = dynamic(
-  async () => (await import("components/account/AccountSettingsTab")).AccountSettingsTab,
+  async () => (await import("components/account/settings/account-settings-tab")).AccountSettingsTab,
   { ssr: false },
 );
 
 const AppearanceTab = dynamic(
-  async () => (await import("components/account/AppearanceTab")).AppearanceTab,
+  async () => (await import("components/account/appearance-tab")).AppearanceTab,
   { ssr: false },
 );
 
 const ConnectionsTab = dynamic(
-  async () => (await import("components/account/ConnectionsTab")).ConnectionsTab,
+  async () => (await import("components/account/user-connections-tab")).ConnectionsTab,
   { ssr: false },
 );
 
 const UserApiTokenTab = dynamic(
-  async () => (await import("components/account/UserApiToken")).UserApiTokenTab,
+  async () => (await import("components/account/user-api-token-tab")).UserApiTokenTab,
   { ssr: false },
 );
 
@@ -47,12 +45,9 @@ export default function Account({ availableSounds }: Props) {
   const { user } = useAuth();
   const t = useTranslations("Account");
   const router = useRouter();
-  const { DISCORD_AUTH, STEAM_OAUTH, USER_API_TOKENS } = useFeatureEnabled();
+  const { DISCORD_AUTH, STEAM_OAUTH } = useFeatureEnabled();
   const errorT = useTranslations("Errors");
   const showConnectionsTab = (DISCORD_AUTH || STEAM_OAUTH) && canUseThirdPartyConnections();
-
-  const { hasPermissions } = usePermission();
-  const hasApiTokenPermissions = hasPermissions([Permissions.UsePersonalApiToken], false);
 
   const errors = {
     discordAccountAlreadyLinked: errorT("discordAccountAlreadyLinked"),
@@ -72,15 +67,11 @@ export default function Account({ availableSounds }: Props) {
     { name: t("accountInfo"), value: "accountInfo" },
     { name: t("accountSettings"), value: "accountSettings" },
     { name: t("appearanceSettings"), value: "appearanceSettings" },
+    { name: t("userApiToken"), value: "userApiToken" },
   ];
 
   if (showConnectionsTab) {
-    TABS_TITLES[3] = { name: t("connections"), value: "connections" };
-  }
-
-  if (USER_API_TOKENS && hasApiTokenPermissions) {
-    const idx = showConnectionsTab ? 4 : 3;
-    TABS_TITLES[idx] = { name: t("userApiToken"), value: "userApiToken" };
+    TABS_TITLES[4] = { name: t("connections"), value: "connections" };
   }
 
   if (!user) {
@@ -97,8 +88,8 @@ export default function Account({ availableSounds }: Props) {
             <AccountInfoTab />
             <AccountSettingsTab />
             <AppearanceTab availableSounds={availableSounds} />
+            <UserApiTokenTab />
             {showConnectionsTab ? <ConnectionsTab /> : null}
-            {USER_API_TOKENS && hasApiTokenPermissions ? <UserApiTokenTab /> : null}
           </TabList>
         </div>
       </div>
@@ -115,7 +106,10 @@ export const getServerSideProps: GetServerSideProps = async ({ locale, req }) =>
       session: user,
       availableSounds,
       messages: {
-        ...(await getTranslations(["account", "auth", "common", "admin"], user?.locale ?? locale)),
+        ...(await getTranslations(
+          ["account", "cad-settings", "auth", "common", "admin"],
+          user?.locale ?? locale,
+        )),
       },
     },
   };

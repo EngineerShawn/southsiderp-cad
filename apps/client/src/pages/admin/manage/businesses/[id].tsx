@@ -1,25 +1,26 @@
 import { useTranslations } from "use-intl";
-import { Button } from "@snailycad/ui";
+import { Alert, Button, Status, buttonVariants } from "@snailycad/ui";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
 import { useModal } from "state/modalState";
-import { Rank, EmployeeAsEnum, ValueType } from "@snailycad/types";
+import { EmployeeAsEnum, ValueType, WhitelistStatus } from "@snailycad/types";
 import useFetch from "lib/useFetch";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { requestAll, yesOrNoText } from "lib/utils";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { Title } from "components/shared/Title";
-import { Status } from "components/shared/Status";
 import { usePermission, Permissions } from "hooks/usePermission";
 import type {
   DeleteBusinessFireEmployeeData,
   GetManageBusinessByIdEmployeesData,
 } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { ArrowLeft } from "react-bootstrap-icons";
 
 const AlertModal = dynamic(async () => (await import("components/modal/AlertModal")).AlertModal, {
   ssr: false,
@@ -39,17 +40,16 @@ interface Props {
 
 export default function ManageBusinesses({ business, businessId }: Props) {
   const { state, execute } = useFetch();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { hasPermissions } = usePermission();
-  const hasManagePermissions = hasPermissions(
-    [Permissions.ManageBusinesses, Permissions.DeleteBusinesses],
-    (u) => u.rank !== Rank.USER,
-  );
+  const hasManagePermissions = hasPermissions([
+    Permissions.ManageBusinesses,
+    Permissions.DeleteBusinesses,
+  ]);
 
   useLoadValuesClientSide({
     valueTypes: [ValueType.BUSINESS_ROLE],
   });
-  const tableState = useTableState();
 
   const asyncTable = useAsyncTable({
     fetchOptions: {
@@ -62,10 +62,12 @@ export default function ManageBusinesses({ business, businessId }: Props) {
     totalCount: business.totalCount,
     initialData: business.employees,
   });
-
+  const tableState = useTableState({ pagination: asyncTable.pagination });
   const [tempEmployee, employeeState] = useTemporaryItem(asyncTable.items);
+
   const t = useTranslations();
   const common = useTranslations("Common");
+  const isBusinessPendingApproval = business.status === WhitelistStatus.PENDING;
 
   async function handleFireEmployee() {
     if (!hasManagePermissions || !tempEmployee) return;
@@ -79,14 +81,13 @@ export default function ManageBusinesses({ business, businessId }: Props) {
     if (json) {
       asyncTable.remove(tempEmployee.id);
       employeeState.setTempId(null);
-      closeModal(ModalIds.AlertFireEmployee);
+      modalState.closeModal(ModalIds.AlertFireEmployee);
     }
   }
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [
           Permissions.ViewBusinesses,
           Permissions.DeleteBusinesses,
@@ -94,7 +95,31 @@ export default function ManageBusinesses({ business, businessId }: Props) {
         ],
       }}
     >
-      <Title className="mb-5">{t("Business.employees")}</Title>
+      <header className="flex items-center justify-between mt-5">
+        <Title>{t("Business.employees")}</Title>
+
+        <Link
+          className={buttonVariants({ className: "flex items-center gap-2" })}
+          href="/admin/manage/businesses"
+        >
+          <ArrowLeft /> {t("Common.goBack")}
+        </Link>
+      </header>
+
+      {isBusinessPendingApproval ? (
+        <Alert type="warning" title="Business is pending approval">
+          <p>
+            This business is still pending approval. It must first be approved by an administrator
+            before any changes can be done.{" "}
+            <Link
+              className="font-medium underline"
+              href="/admin/manage/businesses?activeTab=pendingBusinesses"
+            >
+              Go back
+            </Link>
+          </p>
+        </Alert>
+      ) : null}
 
       <Table
         tableState={tableState}
@@ -110,21 +135,21 @@ export default function ManageBusinesses({ business, businessId }: Props) {
               <Button
                 onPress={() => {
                   employeeState.setTempId(employee.id);
-                  openModal(ModalIds.ManageEmployee);
+                  modalState.openModal(ModalIds.ManageEmployee);
                 }}
                 size="xs"
-                disabled={employee.role?.as === EmployeeAsEnum.OWNER}
                 variant="success"
+                disabled={isBusinessPendingApproval}
               >
                 {common("manage")}
               </Button>
               <Button
                 onPress={() => {
                   employeeState.setTempId(employee.id);
-                  openModal(ModalIds.AlertFireEmployee);
+                  modalState.openModal(ModalIds.AlertFireEmployee);
                 }}
                 size="xs"
-                disabled={employee.role?.as === EmployeeAsEnum.OWNER}
+                disabled={isBusinessPendingApproval || employee.role?.as === EmployeeAsEnum.OWNER}
                 className="ml-2"
                 variant="danger"
               >
@@ -143,7 +168,7 @@ export default function ManageBusinesses({ business, businessId }: Props) {
         ]}
       />
 
-      {hasManagePermissions ? (
+      {hasManagePermissions && !isBusinessPendingApproval ? (
         <>
           <AlertModal
             onDeleteClick={handleFireEmployee}

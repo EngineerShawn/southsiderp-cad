@@ -8,7 +8,7 @@ export const OFFICER = {
   callsign: "E",
   callsign2: "92",
   citizen: { name: "john", surname: "doe" },
-  badgeNumber: 6034,
+  badgeNumberString: "6034",
   department: { value: { value: "LSPD" }, callsign: "PD" },
   divisions: [{ value: { value: "Patrol" }, callsign: "P" }],
   citizenId: "xxxxx",
@@ -34,6 +34,10 @@ describe("formatCaseNumber", () => {
     expect(formatCaseNumber(RECORD, TEMPLATE_WITH_YEAR_DEPARTMENT)).toMatchInlineSnapshot(
       '"PD-2022-12-20-00320"',
     );
+  });
+
+  test("Return caseNumber if template is null", () => {
+    expect(formatCaseNumber(RECORD, null)).toMatchInlineSnapshot('"#320"');
   });
 });
 

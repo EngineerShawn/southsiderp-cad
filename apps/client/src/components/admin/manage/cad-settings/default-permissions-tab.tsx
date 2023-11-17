@@ -1,24 +1,23 @@
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { useTranslations } from "use-intl";
 
-import { FormField } from "components/form/FormField";
-import { Button, Loader, TabsContent, TextField } from "@snailycad/ui";
+import { Alert, Button, Loader, SwitchField, TextField } from "@snailycad/ui";
 import { useAuth } from "context/AuthContext";
 import useFetch from "lib/useFetch";
 import type { cad } from "@snailycad/types";
-import { Toggle } from "components/form/Toggle";
-import { SettingsTabs } from "src/pages/admin/manage/cad-settings";
 import { toastMessage } from "lib/toastMessage";
 import type { PutCADDefaultPermissionsData } from "@snailycad/types/api";
 import { usePermissionsModal } from "hooks/use-permissions-modal";
-import { formatPermissionName } from "../users/modals/manage-permissions-modal";
-import { PermissionNames, getPermissions, defaultPermissions } from "@snailycad/permissions";
+import { type PermissionNames, getPermissions, defaultPermissions } from "@snailycad/permissions";
+import { TabsContent } from "@radix-ui/react-tabs";
+import { SettingsTabs } from "components/admin/cad-settings/layout";
 
 export function DefaultPermissionsTab() {
   const common = useTranslations("Common");
   const { state, execute } = useFetch();
   const { cad, setCad } = useAuth();
   const { DEPRECATED_PERMISSIONS, groups, handleToggleAll } = usePermissionsModal({});
+  const t = useTranslations("Permissions");
 
   async function onSubmit(
     values: typeof INITIAL_VALUES,
@@ -26,7 +25,9 @@ export function DefaultPermissionsTab() {
   ) {
     if (!cad) return;
 
-    const permissionsArray = Object.keys(values).filter((v) => !!values[v as PermissionNames]);
+    const permissionsArray = Object.keys(values).filter((v) =>
+      Boolean(values[v as PermissionNames]),
+    );
 
     const { json } = await execute<PutCADDefaultPermissionsData, typeof INITIAL_VALUES>({
       path: "/admin/manage/cad-settings/default-permissions",
@@ -59,19 +60,16 @@ export function DefaultPermissionsTab() {
       value={SettingsTabs.DefaultPermissions}
       className="mt-3"
     >
-      <h2 className="text-2xl font-semibold">Default Permissions</h2>
+      <h2 className="text-2xl font-semibold">{t("defaultPermissions")}</h2>
 
-      <p className="my-3 text-neutral-700 dark:text-gray-200">
-        These permissions will be automatically granted to every user that creates a new account.
-      </p>
+      <p className="my-3 text-neutral-700 dark:text-gray-200">{t("defaultPermissionsInfo")}</p>
 
-      <p className="text-neutral-700 dark:text-gray-200">
-        <b>Warning:</b> It is recommended to only change this if you are sure every user that
-        creates an account should be granted with the selected permissions.
-      </p>
+      <Alert type="warning" title={t("warning")}>
+        {t("defaultPermissionsWarning")}
+      </Alert>
 
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, values, setFieldValue, setValues }) => (
+        {({ values, setFieldValue, setValues }) => (
           <Form className="mt-5 space-y-5">
             <TextField
               label={common("search")}
@@ -88,7 +86,7 @@ export function DefaultPermissionsTab() {
                 .map((group) => {
                   const filtered = group.permissions.filter((v) => {
                     const isIncludedInValue = v.toLowerCase().includes(values.search.toLowerCase());
-                    const isIncludedInName = formatPermissionName(v)
+                    const isIncludedInName = t(v)
                       .toLowerCase()
                       .includes(values.search.toLowerCase());
 
@@ -101,7 +99,7 @@ export function DefaultPermissionsTab() {
 
                   return (
                     <div className="mb-5" key={group.name}>
-                      <header className="flex items-center gap-3 mb-2">
+                      <header className="flex items-center gap-3">
                         <h3 className="text-xl font-semibold">{group.name}</h3>
 
                         <Button
@@ -109,26 +107,25 @@ export function DefaultPermissionsTab() {
                           size="xs"
                           onPress={() => handleToggleAll(group, values, setValues)}
                         >
-                          Toggle all
+                          {t("toggleAll")}
                         </Button>
                       </header>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 mt-5">
                         {filtered.map((permission) => {
-                          const formattedName = formatPermissionName(permission);
-
+                          const formattedName = t(permission);
                           if (DEPRECATED_PERMISSIONS.includes(permission)) {
                             return null;
                           }
 
                           return (
-                            <FormField key={permission} className="my-1" label={formattedName}>
-                              <Toggle
-                                onCheckedChange={handleChange}
-                                value={values[permission as PermissionNames]}
-                                name={permission}
-                              />
-                            </FormField>
+                            <SwitchField
+                              key={permission}
+                              isSelected={values[permission as PermissionNames]}
+                              onChange={(isSelected) => setFieldValue(permission, isSelected)}
+                            >
+                              {formattedName}
+                            </SwitchField>
                           );
                         })}
                       </div>
@@ -137,7 +134,11 @@ export function DefaultPermissionsTab() {
                 })}
             </div>
 
-            <Button className="flex items-center" type="submit" disabled={state === "loading"}>
+            <Button
+              className="flex items-center float-right"
+              type="submit"
+              disabled={state === "loading"}
+            >
               {state === "loading" ? <Loader className="mr-3 border-red-300" /> : null}
               {common("save")}
             </Button>

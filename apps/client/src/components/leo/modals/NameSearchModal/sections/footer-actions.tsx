@@ -1,18 +1,23 @@
 import * as React from "react";
 import { RecordType } from "@snailycad/types";
 import type { PostEmsFdDeclareCitizenById } from "@snailycad/types/api";
-import { Button } from "@snailycad/ui";
-import { Dropdown } from "components/Dropdown";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@snailycad/ui";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import useFetch from "lib/useFetch";
 import { normalizeValue } from "lib/values/normalize-value";
 import { ThreeDotsVertical } from "react-bootstrap-icons";
 import { useModal } from "state/modalState";
 import { useNameSearch } from "state/search/name-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
-import { shallow } from "zustand/shallow";
 import { ManageRecordModal } from "../../manage-record/manage-record-modal";
+import { Permissions, usePermission } from "hooks/usePermission";
 
 interface Props {
   isLeo?: boolean;
@@ -21,20 +26,21 @@ interface Props {
 export function NameSearchFooterActions(props: Props) {
   const [type, setType] = React.useState<RecordType | null>(null);
 
-  const { CREATE_USER_CITIZEN_LEO } = useFeatureEnabled();
-  const { openModal } = useModal();
+  const { CREATE_USER_CITIZEN_LEO, LEO_EDITABLE_CITIZEN_PROFILE } = useFeatureEnabled();
+  const modalState = useModal();
   const t = useTranslations();
   const { state, execute } = useFetch();
-  const { currentResult, setCurrentResult } = useNameSearch(
-    (state) => ({
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-    }),
-    shallow,
-  );
+  const { hasPermissions } = usePermission();
+  const hasDeclarePermissions = hasPermissions([Permissions.DeclareCitizenDead]);
+  const hasManageCitizenProfilePermissions = hasPermissions([Permissions.LeoManageCitizenProfile]);
+
+  const { currentResult, setCurrentResult } = useNameSearch((state) => ({
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+  }));
 
   async function handleDeclare() {
-    if (!currentResult) return;
+    if (!currentResult || !hasDeclarePermissions) return;
 
     const { json } = await execute<PostEmsFdDeclareCitizenById>({
       path: `/ems-fd/declare/${currentResult.id}`,
@@ -69,7 +75,7 @@ export function NameSearchFooterActions(props: Props) {
     };
 
     setType(type);
-    openModal(modalId[type], {
+    modalState.openModal(modalId[type], {
       citizenName: `${currentResult.name} ${currentResult.surname}`,
       citizenId: currentResult.id,
     });
@@ -79,49 +85,67 @@ export function NameSearchFooterActions(props: Props) {
 
   return (
     <div className="flex items-center">
-      <Dropdown
-        extra={{ maxWidth: 200 }}
-        sideOffset={3}
-        alignOffset={0}
-        modal={false}
-        trigger={
-          <Button>
-            <ThreeDotsVertical />
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button className="flex items-center justify-center w-8 h-7 p-0">
+            <ThreeDotsVertical
+              aria-label="Options"
+              className="fill-neutral-800 dark:fill-gray-300"
+              width={16}
+              height={16}
+            />
           </Button>
-        }
-      >
-        {CREATE_USER_CITIZEN_LEO ? (
-          <Dropdown.Item className="px-1.5" onPress={() => openModal(ModalIds.CreateCitizen)}>
-            {t("Leo.createCitizen")}
-          </Dropdown.Item>
-        ) : null}
+        </DropdownMenuTrigger>
 
-        {showExtraActions ? (
-          <>
-            <Dropdown.Item
-              size="xs"
-              type="button"
-              onPress={handleDeclare}
-              disabled={state === "loading"}
-              variant="cancel"
+        <DropdownMenuContent side="right" sideOffset={3} alignOffset={0}>
+          {CREATE_USER_CITIZEN_LEO ? (
+            <DropdownMenuItem
               className="px-1.5"
+              onClick={() => modalState.openModal(ModalIds.CreateOrManageCitizen)}
             >
-              {currentResult.dead ? t("Ems.declareAlive") : t("Ems.declareDead")}
-            </Dropdown.Item>
+              {t("Leo.createCitizen")}
+            </DropdownMenuItem>
+          ) : null}
 
-            <Dropdown.Item
-              size="xs"
-              type="button"
-              onPress={handleDeclareMissing}
-              disabled={state === "loading"}
-              variant="cancel"
-              className="px-1.5"
-            >
-              {currentResult.missing ? t("Leo.declareFound") : t("Leo.declareMissing")}
-            </Dropdown.Item>
-          </>
-        ) : null}
-      </Dropdown>
+          {showExtraActions ? (
+            <>
+              {hasDeclarePermissions ? (
+                <DropdownMenuItem
+                  size="xs"
+                  onClick={handleDeclare}
+                  disabled={state === "loading"}
+                  variant="cancel"
+                  className="px-1.5"
+                >
+                  {currentResult.dead ? t("Ems.declareAlive") : t("Ems.declareDead")}
+                </DropdownMenuItem>
+              ) : null}
+
+              <DropdownMenuItem
+                size="xs"
+                onClick={handleDeclareMissing}
+                disabled={state === "loading"}
+                variant="cancel"
+                className="px-1.5"
+              >
+                {currentResult.missing ? t("Leo.declareFound") : t("Leo.declareMissing")}
+              </DropdownMenuItem>
+
+              {hasManageCitizenProfilePermissions && LEO_EDITABLE_CITIZEN_PROFILE ? (
+                <DropdownMenuItem
+                  disabled={state === "loading"}
+                  variant="cancel"
+                  className="px-1.5"
+                  size="xs"
+                  onClick={() => modalState.openModal(ModalIds.CreateOrManageCitizen)}
+                >
+                  {t("Leo.manageCitizenProfile")}
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {showExtraActions ? (
         <div className="ml-2">

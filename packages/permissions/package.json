@@ -1,15 +1,17 @@
 {
   "name": "@snailycad/permissions",
-  "version": "1.53.0",
+  "version": "1.77.2",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.mjs"
     },
     "./permissions": {
+      "types": "./dist/permissions.d.ts",
       "require": "./dist/permissions.js",
       "import": "./dist/permissions.mjs"
     },
@@ -18,18 +20,22 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "yarn tsup",
-    "watch": "yarn tsup --watch --silent=false",
-    "typecheck": "yarn tsc --noEmit",
-    "test:watch": "yarn vitest --watch",
-    "test": "yarn vitest run"
+    "build": "pnpm tsup",
+    "watch": "pnpm tsup --watch --silent=false",
+    "typecheck": "pnpm tsc --noEmit",
+    "test:watch": "pnpm vitest --watch",
+    "test": "pnpm vitest run",
+    "prepublish": "pnpm build"
   },
   "devDependencies": {
-    "tsup": "^6.7.0",
-    "typescript": "^5.0.2",
-    "vite": "^4.2.1",
-    "vitest": "^0.29.8"
+    "tsup": "6.6.2",
+    "typescript": "^5.2.2",
+    "vite": "^4.4.9",
+    "vitest": "^0.34.6"
   },
   "tsup": {
     "entry": [
@@ -38,7 +44,7 @@
     "dts": true,
     "bundle": false,
     "platform": "node",
-    "target": "node16",
+    "target": "node18",
     "treeshake": true,
     "silent": true,
     "format": [

@@ -1,16 +1,20 @@
-import * as Accordion from "@radix-ui/react-accordion";
 import type { IndividualDivisionCallsign } from "@snailycad/types";
 import { FormField } from "components/form/FormField";
-import { FormRow } from "components/form/FormRow";
-import { Input } from "@snailycad/ui";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Input,
+  FormRow,
+} from "@snailycad/ui";
 import type { SelectValue } from "components/form/Select";
 import { useFormikContext } from "formik";
-import { CaretDownFill } from "react-bootstrap-icons";
 
 export function AdvancedSettings() {
   const { values, handleChange, setFieldValue } = useFormikContext<{
     callsigns: Record<string, IndividualDivisionCallsign>;
-    divisions: SelectValue<string>[];
+    divisions: SelectValue[];
   }>();
 
   function _handleChange(e: React.ChangeEvent<HTMLInputElement>, divisionId: string) {
@@ -27,21 +31,11 @@ export function AdvancedSettings() {
   }
 
   return (
-    <Accordion.Root className="mt-5" collapsible type="single">
-      <Accordion.Item value="advanced">
-        <Accordion.Trigger
-          title="Click to expand"
-          className="accordion-state flex justify-between w-full pt-1 text-xl font-semibold text-left"
-        >
-          Advanced Settings
-          <CaretDownFill
-            width={20}
-            height={20}
-            className="transform w-5 h-5 transition-transform accordion-state-transform"
-          />
-        </Accordion.Trigger>
+    <Accordion className="mt-5" collapsible type="single">
+      <AccordionItem value="advanced">
+        <AccordionTrigger title="Click to expand">Advanced Settings</AccordionTrigger>
 
-        <Accordion.Content className="mt-3">
+        <AccordionContent className="mt-3">
           <p className="my-2 text-neutral-700 dark:text-gray-400">
             Set individual callsigns for each division. This is optional.
           </p>
@@ -49,7 +43,7 @@ export function AdvancedSettings() {
           {values.divisions.map((div) => {
             return (
               <div className="flex flex-col gap-2" key={div.value}>
-                <h3 className="text-lg font-semibold">{div.label}&apos;s Callsign</h3>
+                <h3 className="font-semibold">{div.label}&apos;s Callsign</h3>
 
                 <FormRow>
                   <FormField label={`Callsign 1 (${div.label})`}>
@@ -71,8 +65,8 @@ export function AdvancedSettings() {
               </div>
             );
           })}
-        </Accordion.Content>
-      </Accordion.Item>
-    </Accordion.Root>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }

@@ -1,26 +1,25 @@
 import * as React from "react";
-import { Loader, Button, AsyncListSearchField, Item } from "@snailycad/ui";
+import { Loader, Button, AsyncListSearchField, Item, Infofield, Status } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
-import { Infofield } from "components/shared/Infofield";
-import { useWeaponSearch, WeaponSearchResult } from "state/search/weapon-search-state";
+import { useWeaponSearch, type WeaponSearchResult } from "state/search/weapon-search-state";
 import { CustomFieldsArea } from "./CustomFieldsArea";
 import { useRouter } from "next/router";
 import { ManageCustomFieldsModal } from "./NameSearchModal/ManageCustomFieldsModal";
 import { CustomFieldCategory } from "@snailycad/types";
-import { Status } from "components/shared/Status";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
+import { ManageWeaponFlagsModal } from "./weapon-search/manage-weapon-flags-modal";
 
 interface Props {
   id?: ModalIds.WeaponSearch | ModalIds.WeaponSearchWithinName;
 }
 
 export function WeaponSearchModal({ id = ModalIds.WeaponSearch }: Props) {
-  const { isOpen, openModal, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const wT = useTranslations("Weapons");
   const t = useTranslations("Leo");
@@ -31,19 +30,19 @@ export function WeaponSearchModal({ id = ModalIds.WeaponSearch }: Props) {
   const { BUREAU_OF_FIREARMS } = useFeatureEnabled();
 
   React.useEffect(() => {
-    if (!isOpen(id)) {
+    if (!modalState.isOpen(id)) {
       setCurrentResult(undefined);
     }
-  }, [id, isOpen, setCurrentResult]);
+  }, [id, modalState, setCurrentResult]);
 
   function handleNameClick() {
     if (!currentResult) return;
 
-    openModal(ModalIds.NameSearch, {
+    modalState.openModal(ModalIds.NameSearch, {
       ...currentResult.citizen,
       name: `${currentResult.citizen.name} ${currentResult.citizen.surname}`,
     });
-    closeModal(ModalIds.WeaponSearchWithinName);
+    modalState.closeModal(ModalIds.WeaponSearchWithinName);
   }
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
@@ -69,26 +68,27 @@ export function WeaponSearchModal({ id = ModalIds.WeaponSearch }: Props) {
   return (
     <Modal
       title={t("weaponSearch")}
-      onClose={() => closeModal(id)}
-      isOpen={isOpen(id)}
+      onClose={() => modalState.closeModal(id)}
+      isOpen={modalState.isOpen(id)}
       className="w-[750px]"
     >
       <Formik initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ setValues, errors, values, isValid }) => (
+        {({ setValues, setFieldValue, errors, values, isValid }) => (
           <Form>
             <AsyncListSearchField<NonNullable<WeaponSearchResult>>
               allowsCustomValue
               autoFocus
-              setValues={({ localValue, node }) => {
-                const searchValue =
-                  typeof localValue !== "undefined" ? { searchValue: localValue } : {};
-                const serialNumber = node ? { serialNumber: node.key as string } : {};
-
+              onInputChange={(value) => setFieldValue("searchValue", value)}
+              onSelectionChange={(node) => {
                 if (node) {
                   setCurrentResult(node.value);
-                }
 
-                setValues({ ...values, ...searchValue, ...serialNumber });
+                  setValues({
+                    ...values,
+                    searchValue: node.value?.serialNumber ?? node.textValue,
+                    serialNumber: node.key as string,
+                  });
+                }
               }}
               localValue={values.searchValue}
               errorMessage={errors.serialNumber}
@@ -116,45 +116,67 @@ export function WeaponSearchModal({ id = ModalIds.WeaponSearch }: Props) {
               <div className="mt-3">
                 <h3 className="text-2xl font-semibold">{t("results")}</h3>
 
-                <ul className="mt-2">
-                  <li>
-                    <Infofield label={wT("model")}>{currentResult.model.value.value}</Infofield>
-                  </li>
-                  <li>
-                    <Infofield label={wT("registrationStatus")}>
-                      {currentResult.registrationStatus.value}
-                    </Infofield>
-                  </li>
-                  <li>
-                    <Infofield label={wT("serialNumber")}>{currentResult.serialNumber}</Infofield>
-                  </li>
-                  {BUREAU_OF_FIREARMS ? (
+                <div className="flex gap-x-24">
+                  <ul className="mt-2">
                     <li>
-                      <Infofield label={wT("bofStatus")}>
-                        <Status fallback="—">{currentResult.bofStatus}</Status>
+                      <Infofield label={wT("model")}>{currentResult.model.value.value}</Infofield>
+                    </li>
+                    <li>
+                      <Infofield label={wT("registrationStatus")}>
+                        {currentResult.registrationStatus.value}
                       </Infofield>
                     </li>
-                  ) : null}
-                  <li>
-                    <Infofield className="capitalize mt-2" label={t("owner")}>
-                      <Button
-                        title={common("openInSearch")}
-                        size="xs"
-                        type="button"
-                        onPress={handleNameClick}
-                      >
-                        {currentResult.citizen.name} {currentResult.citizen.surname}
-                      </Button>
-                    </Infofield>
-                  </li>
+                    <li>
+                      <Infofield label={wT("serialNumber")}>{currentResult.serialNumber}</Infofield>
+                    </li>
+                    {BUREAU_OF_FIREARMS ? (
+                      <li>
+                        <Infofield label={wT("bofStatus")}>
+                          <Status fallback="—">{currentResult.bofStatus}</Status>
+                        </Infofield>
+                      </li>
+                    ) : null}
 
-                  <CustomFieldsArea currentResult={currentResult} isLeo={isLeo} />
-                </ul>
+                    <li>
+                      <Infofield className="capitalize mt-2" label={t("owner")}>
+                        <Button
+                          title={common("openInSearch")}
+                          size="xs"
+                          type="button"
+                          onPress={handleNameClick}
+                        >
+                          {currentResult.citizen.name} {currentResult.citizen.surname}
+                        </Button>
+                      </Infofield>
+                    </li>
+                  </ul>
+
+                  <ul>
+                    <li className="mt-4">
+                      <Infofield label={t("flags")}>
+                        {currentResult.flags?.map((v) => v.value).join(", ") || common("none")}
+                      </Infofield>
+
+                      {isLeo ? (
+                        <Button
+                          size="xs"
+                          type="button"
+                          className="mt-2"
+                          onPress={() => modalState.openModal(ModalIds.ManageWeaponFlags)}
+                        >
+                          {t("manageWeaponFlags")}
+                        </Button>
+                      ) : null}
+                    </li>
+
+                    <CustomFieldsArea currentResult={currentResult} isLeo={isLeo} />
+                  </ul>
+                </div>
               </div>
             )}
 
             <footer className="flex justify-end mt-5">
-              <Button type="reset" onPress={() => closeModal(id)} variant="cancel">
+              <Button type="reset" onPress={() => modalState.closeModal(id)} variant="cancel">
                 {common("cancel")}
               </Button>
               <Button
@@ -171,13 +193,17 @@ export function WeaponSearchModal({ id = ModalIds.WeaponSearch }: Props) {
       </Formik>
 
       {currentResult ? (
-        <ManageCustomFieldsModal
-          category={CustomFieldCategory.WEAPON}
-          url={`/search/actions/custom-fields/weapon/${currentResult.id}`}
-          allCustomFields={currentResult.allCustomFields ?? []}
-          customFields={currentResult.customFields ?? []}
-          onUpdate={(results) => setCurrentResult({ ...currentResult, ...results })}
-        />
+        <>
+          <ManageCustomFieldsModal
+            category={CustomFieldCategory.WEAPON}
+            url={`/search/actions/custom-fields/weapon/${currentResult.id}`}
+            allCustomFields={currentResult.allCustomFields ?? []}
+            customFields={currentResult.customFields ?? []}
+            onUpdate={(results) => setCurrentResult({ ...currentResult, ...results })}
+          />
+
+          <ManageWeaponFlagsModal />
+        </>
       ) : null}
     </Modal>
   );

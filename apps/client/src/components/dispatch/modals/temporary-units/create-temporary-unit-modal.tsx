@@ -1,8 +1,8 @@
 import { useTranslations } from "use-intl";
-import { Loader, Button, TextField } from "@snailycad/ui";
+import { Loader, Button, TextField, FormRow } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { Form, Formik } from "formik";
 import { FormField } from "components/form/FormField";
 import useFetch from "lib/useFetch";
@@ -11,18 +11,22 @@ import type { Put911CallByIdData } from "@snailycad/types/api";
 import { useValues } from "context/ValuesContext";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { Select } from "components/form/Select";
-import { FormRow } from "components/form/FormRow";
 import { CallSignPreview } from "components/leo/CallsignPreview";
+import {
+  CREATE_TEMPORARY_EMS_FD_DEPUTY_SCHEMA,
+  CREATE_TEMPORARY_OFFICER_SCHEMA,
+} from "@snailycad/schemas";
+import { handleValidate } from "lib/handleValidate";
 
 interface Props {
   onClose?(): void;
 }
 
 export function CreateTemporaryUnitModal({ onClose }: Props) {
-  const { isOpen, closeModal, getPayload } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const { state, execute } = useFetch();
-  const type = getPayload(ModalIds.CreateTemporaryUnit) as "ems-fd" | "officer";
+  const type = modalState.getPayload(ModalIds.CreateTemporaryUnit) as "ems-fd" | "officer";
 
   const { DIVISIONS, BADGE_NUMBERS } = useFeatureEnabled();
   const { division, department } = useValues();
@@ -31,14 +35,17 @@ export function CreateTemporaryUnitModal({ onClose }: Props) {
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.CreateTemporaryUnit);
+    modalState.closeModal(ModalIds.CreateTemporaryUnit);
   }
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
     const { json } = await execute<Put911CallByIdData>({
       path: `/temporary-units/${type}`,
       method: "POST",
-      data: { ...values, identifiers: values.identifier.split(",") },
+      data: {
+        ...values,
+        identifiers: values.identifier.length <= 0 ? [] : values.identifier.split(","),
+      },
     });
 
     if (json.id) {
@@ -46,6 +53,9 @@ export function CreateTemporaryUnitModal({ onClose }: Props) {
     }
   }
 
+  const schema =
+    type === "ems-fd" ? CREATE_TEMPORARY_EMS_FD_DEPUTY_SCHEMA : CREATE_TEMPORARY_OFFICER_SCHEMA;
+  const validate = handleValidate(schema);
   const INITIAL_VALUES = {
     name: "",
     surname: "",
@@ -55,19 +65,18 @@ export function CreateTemporaryUnitModal({ onClose }: Props) {
     divisions: [],
     callsign: "",
     callsign2: "",
-    badgeNumber: "",
+    badgeNumberString: "",
     identifier: "",
-    citizenId: "test",
   };
 
   return (
     <Modal
-      isOpen={isOpen(ModalIds.CreateTemporaryUnit)}
+      isOpen={modalState.isOpen(ModalIds.CreateTemporaryUnit)}
       onClose={handleClose}
       title={t("Leo.createTemporaryUnit")}
       className="w-[600px]"
     >
-      <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
+      <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
         {({ handleChange, setFieldValue, values, errors }) => (
           <Form>
             <FormRow>
@@ -159,15 +168,11 @@ export function CreateTemporaryUnitModal({ onClose }: Props) {
 
             {BADGE_NUMBERS ? (
               <TextField
-                errorMessage={errors.badgeNumber}
+                errorMessage={errors.badgeNumberString}
                 label={t("Leo.badgeNumber")}
-                name="badgeNumber"
-                onChange={(value) => {
-                  isNaN(Number(value))
-                    ? setFieldValue("badgeNumber", value)
-                    : setFieldValue("badgeNumber", parseInt(value));
-                }}
-                value={String(values.badgeNumber)}
+                name="badgeNumberString"
+                onChange={(value) => setFieldValue("badgeNumberString", value)}
+                value={values.badgeNumberString}
               />
             ) : null}
 

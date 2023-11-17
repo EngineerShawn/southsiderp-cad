@@ -9,8 +9,7 @@ import { requestAll, yesOrNoText } from "lib/utils";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { useValues } from "context/ValuesContext";
-import { TextField } from "@snailycad/ui";
-import { Infofield } from "components/shared/Infofield";
+import { Infofield, TextField } from "@snailycad/ui";
 import {
   getPenalCodeMaxFines,
   getPenalCodeMinFines,
@@ -35,10 +34,7 @@ export default function PenalCodesPage() {
   }, [search, penalCode.values]);
 
   return (
-    <Layout
-      permissions={{ fallback: (u) => u.isLeo, permissions: [Permissions.Leo] }}
-      className="dark:text-white"
-    >
+    <Layout permissions={{ permissions: [Permissions.Leo] }} className="dark:text-white">
       <Title>{t("penalCodes")}</Title>
 
       {penalCode.values.length <= 0 ? (

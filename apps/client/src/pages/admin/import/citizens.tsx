@@ -7,19 +7,17 @@ import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
 import { AdvancedCitizensTab } from "components/admin/manage/citizens/AdvancedCitizensTab";
 import { Button } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
-import { Rank } from "@snailycad/types";
 import { Permissions } from "@snailycad/permissions";
 
 export default function ImportCitizensPage() {
   const t = useTranslations("Management");
-  const { openModal } = useModal();
+  const modalState = useModal();
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ImportCitizens],
       }}
     >
@@ -28,7 +26,9 @@ export default function ImportCitizensPage() {
           <Title className="!mb-0">{t("IMPORT_CITIZENS")}</Title>
 
           <div className="min-w-fit w-fit">
-            <Button onPress={() => openModal(ModalIds.ImportCitizens)}>Import via file</Button>
+            <Button onPress={() => modalState.openModal(ModalIds.ImportCitizens)}>
+              {t("importViaFile")}
+            </Button>
           </div>
         </div>
 

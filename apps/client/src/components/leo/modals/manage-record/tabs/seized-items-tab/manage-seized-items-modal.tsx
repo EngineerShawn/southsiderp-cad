@@ -1,12 +1,10 @@
 import { Form, Formik, useFormikContext } from "formik";
 import { useTranslations } from "use-intl";
-import { Button, TextField } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
+import { Button, SwitchField, TextField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import type { SeizedItem } from "@snailycad/types";
-import { Toggle } from "components/form/Toggle";
 import { v4 } from "uuid";
 
 interface Props {
@@ -15,7 +13,7 @@ interface Props {
 }
 
 export function ManageSeizedItemsModal({ item, onClose }: Props) {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const { values, setFieldValue } = useFormikContext<{ seizedItems: SeizedItem[] }>();
@@ -49,18 +47,18 @@ export function ManageSeizedItemsModal({ item, onClose }: Props) {
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.ManageSeizedItems);
+    modalState.closeModal(ModalIds.ManageSeizedItems);
   }
 
   return (
     <Modal
       title={item ? t("editSeizedItem") : t("addSeizedItem")}
-      isOpen={isOpen(ModalIds.ManageSeizedItems)}
+      isOpen={modalState.isOpen(ModalIds.ManageSeizedItems)}
       onClose={handleClose}
       className="w-[600px]"
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, values, errors, isValid }) => (
+        {({ setFieldValue, values, isValid }) => (
           <Form autoComplete="off">
             <TextField
               autoFocus
@@ -80,9 +78,12 @@ export function ManageSeizedItemsModal({ item, onClose }: Props) {
               value={String(values.quantity)}
             />
 
-            <FormField className="mt-1" checkbox errorMessage={errors.illegal} label={t("illegal")}>
-              <Toggle name="illegal" onCheckedChange={handleChange} value={values.illegal} />
-            </FormField>
+            <SwitchField
+              isSelected={values.illegal}
+              onChange={(isSelected) => setFieldValue("illegal", isSelected)}
+            >
+              {t("illegal")}
+            </SwitchField>
 
             <footer className="flex justify-end mt-5">
               <Button type="reset" onPress={handleClose} variant="cancel">

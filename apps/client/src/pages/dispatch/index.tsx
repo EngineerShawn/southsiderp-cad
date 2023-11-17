@@ -7,17 +7,15 @@ import type { GetServerSideProps } from "next";
 import { ActiveCalls } from "components/dispatch/active-calls/active-calls";
 import { useDispatchState } from "state/dispatch/dispatch-state";
 import { ActiveBolos } from "components/active-bolos/active-bolos";
-import { DispatchModalButtons } from "components/dispatch/ModalButtons";
+import { DispatchModalButtons } from "components/dispatch/utility-configuration";
 import { useTranslations } from "use-intl";
-import { ActiveOfficers } from "components/dispatch/active-officers";
-import { ActiveDeputies } from "components/dispatch/active-deputies";
 import { requestAll } from "lib/utils";
 import { useSignal100 } from "hooks/shared/useSignal100";
 import { usePanicButton } from "hooks/shared/usePanicButton";
 import { Title } from "components/shared/Title";
-import { ValueType } from "@snailycad/types";
+import { DashboardLayoutCardType, ValueType } from "@snailycad/types";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { Permissions } from "@snailycad/permissions";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
@@ -27,15 +25,18 @@ import type {
   GetBolosData,
   GetDispatchData,
   GetEmsFdActiveDeputies,
+  GetUserData,
 } from "@snailycad/types/api";
-import { UtilityPanel } from "components/shared/UtilityPanel";
+import { UtilityPanel } from "components/shared/utility-panel/utility-panel";
 import { useCall911State } from "state/dispatch/call-911-state";
 import { useActiveDispatcherState } from "state/dispatch/active-dispatcher-state";
-import { Infofield } from "components/shared/Infofield";
-import { shallow } from "zustand/shallow";
+import { Infofield } from "@snailycad/ui";
+import { ActiveOfficers } from "components/dispatch/active-units/officers/active-officers";
+import { ActiveDeputies } from "components/dispatch/active-units/deputies/active-deputies";
+import { useAuth } from "context/AuthContext";
 
 const ActiveIncidents = dynamic(async () => {
-  return (await import("components/dispatch/active-incidents")).ActiveIncidents;
+  return (await import("components/dispatch/active-incidents/active-incidents")).ActiveIncidents;
 });
 
 const Modals = {
@@ -56,7 +57,7 @@ const Modals = {
     return (await import("components/shared/NotepadModal")).NotepadModal;
   }),
   AddressSearchModal: dynamic(async () => {
-    return (await import("components/dispatch/modals/AddressSearchModal")).AddressSearchModal;
+    return (await import("components/dispatch/modals/address-search-modal")).AddressSearchModal;
   }),
 };
 
@@ -65,6 +66,7 @@ export interface DispatchPageProps extends GetDispatchData {
   activeOfficers: GetActiveOfficersData;
   calls: Get911CallsData;
   bolos: GetBolosData;
+  session: GetUserData | null;
 }
 
 export default function DispatchDashboard(props: DispatchPageProps) {
@@ -80,31 +82,25 @@ export default function DispatchDashboard(props: DispatchPageProps) {
       ValueType.DEPARTMENT,
       ValueType.DIVISION,
       ValueType.ADDRESS_FLAG,
+      ValueType.WEAPON_FLAG,
     ],
   });
 
-  const { userActiveDispatcher, setUserActiveDispatcher } = useActiveDispatcherState(
-    (state) => ({
-      setUserActiveDispatcher: state.setUserActiveDispatcher,
-      userActiveDispatcher: state.userActiveDispatcher,
-    }),
-    shallow,
+  const setUserActiveDispatcher = useActiveDispatcherState(
+    (state) => state.setUserActiveDispatcher,
   );
   const state = useDispatchState();
   const set911Calls = useCall911State((state) => state.setCalls);
   const t = useTranslations("Leo");
-  const signal100 = useSignal100();
-  const panic = usePanicButton();
-
   const { CALLS_911, ACTIVE_INCIDENTS } = useFeatureEnabled();
-  const { isOpen } = useModal();
+  const { user } = useAuth();
+  const session = user ?? props.session;
 
   React.useEffect(() => {
     set911Calls(props.calls.calls);
     state.setBolos(props.bolos.bolos);
 
     setUserActiveDispatcher(props.userActiveDispatcher, props.activeDispatchersCount);
-    state.setActiveIncidents(props.activeIncidents);
 
     state.setActiveDeputies(props.activeDeputies);
     state.setActiveOfficers(props.activeOfficers);
@@ -112,16 +108,65 @@ export default function DispatchDashboard(props: DispatchPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props]);
 
+  const cards = [
+    {
+      type: DashboardLayoutCardType.ACTIVE_OFFICERS,
+      isEnabled: true,
+      children: <ActiveOfficers initialOfficers={props.activeOfficers} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_DEPUTIES,
+      isEnabled: true,
+      children: <ActiveDeputies initialDeputies={props.activeDeputies} />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_CALLS,
+      isEnabled: CALLS_911,
+      children: <ActiveCalls initialData={props.calls} />,
+    },
+
+    {
+      type: DashboardLayoutCardType.ACTIVE_INCIDENTS,
+      isEnabled: ACTIVE_INCIDENTS,
+      children: <ActiveIncidents />,
+    },
+    {
+      type: DashboardLayoutCardType.ACTIVE_BOLOS,
+      isEnabled: true,
+      children: <ActiveBolos initialBolos={props.bolos} />,
+    },
+  ];
+
+  const layoutOrder = session?.dispatchLayoutOrder ?? [];
+  const sortedCards = cards.sort((a, b) => {
+    return layoutOrder.indexOf(a.type) - layoutOrder.indexOf(b.type);
+  });
+
+  return (
+    <Layout permissions={{ permissions: [Permissions.Dispatch] }} className="dark:text-white">
+      <Title renderLayoutTitle={false}>{t("dispatch")}</Title>
+
+      <DispatchHeader userActiveDispatcher={props.userActiveDispatcher} />
+
+      {sortedCards.map((card) =>
+        card.isEnabled ? <React.Fragment key={card.type}>{card.children}</React.Fragment> : null,
+      )}
+
+      <DispatchModals />
+    </Layout>
+  );
+}
+
+function DispatchHeader(props: Pick<DispatchPageProps, "userActiveDispatcher">) {
+  const t = useTranslations("Leo");
+  const userActiveDispatcher = useActiveDispatcherState((state) => state.userActiveDispatcher);
+  const signal100 = useSignal100();
+  const panic = usePanicButton();
   const activeDepartment =
     userActiveDispatcher?.department ?? props.userActiveDispatcher?.department;
 
   return (
-    <Layout
-      permissions={{ fallback: (u) => u.isDispatch, permissions: [Permissions.Dispatch] }}
-      className="dark:text-white"
-    >
-      <Title renderLayoutTitle={false}>{t("dispatch")}</Title>
-
+    <>
       <signal100.Component enabled={signal100.enabled} audio={signal100.audio} />
       <panic.Component audio={panic.audio} unit={panic.unit} />
 
@@ -134,22 +179,18 @@ export default function DispatchDashboard(props: DispatchPageProps) {
 
         <DispatchModalButtons />
       </UtilityPanel>
+    </>
+  );
+}
 
-      <div className="flex flex-col mt-3 md:flex-row md:space-x-3">
-        <div className="w-full">
-          <ActiveOfficers initialOfficers={props.activeOfficers} />
-          <ActiveDeputies initialDeputies={props.activeDeputies} />
-        </div>
-      </div>
-      <div className="mt-3">
-        {CALLS_911 ? <ActiveCalls initialData={props.calls} /> : null}
-        {ACTIVE_INCIDENTS ? <ActiveIncidents /> : null}
-        <ActiveBolos initialBolos={props.bolos} />
-      </div>
+function DispatchModals() {
+  const modalState = useModal();
 
+  return (
+    <>
       <Modals.NotepadModal />
       {/* name search have their own vehicle/weapon search modal */}
-      {isOpen(ModalIds.NameSearch) ? null : (
+      {modalState.isOpen(ModalIds.NameSearch) ? null : (
         <>
           <Modals.WeaponSearchModal id={ModalIds.WeaponSearch} />
           <Modals.VehicleSearchModal id={ModalIds.VehicleSearch} />
@@ -158,7 +199,7 @@ export default function DispatchDashboard(props: DispatchPageProps) {
       <Modals.AddressSearchModal />
       <Modals.NameSearchModal />
       <Modals.CustomFieldSearch />
-    </Layout>
+    </>
   );
 }
 
@@ -169,7 +210,7 @@ export const getServerSideProps: GetServerSideProps = async ({ req, locale }) =>
       ["/admin/values/codes_10", []],
       ["/911-calls", { calls: [], totalCount: 0 }],
       ["/bolos", { bolos: [], totalCount: 0 }],
-      ["/dispatch", { activeDispatchersCount: 0, userActiveDispatcher: null, activeIncidents: [] }],
+      ["/dispatch", { activeDispatchersCount: 0, userActiveDispatcher: null }],
       ["/leo/active-officers", []],
       ["/ems-fd/active-deputies", []],
     ]);
@@ -183,7 +224,6 @@ export const getServerSideProps: GetServerSideProps = async ({ req, locale }) =>
       activeOfficers,
       activeDeputies,
 
-      activeIncidents: activeDispatcherData.activeIncidents ?? [],
       userActiveDispatcher: activeDispatcherData.userActiveDispatcher ?? null,
       activeDispatchersCount: activeDispatcherData.activeDispatchersCount ?? 0,
 

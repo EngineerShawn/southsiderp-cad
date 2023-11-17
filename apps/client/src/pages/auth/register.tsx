@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { AUTH_SCHEMA } from "@snailycad/schemas";
@@ -10,12 +10,12 @@ import { handleValidate } from "lib/handleValidate";
 import type { GetServerSideProps } from "next";
 import { getTranslations } from "lib/getTranslation";
 import { Button, Loader, TextField } from "@snailycad/ui";
-import { cad, WhitelistStatus } from "@snailycad/types";
+import { type cad, WhitelistStatus } from "@snailycad/types";
 import { handleRequest } from "lib/fetch";
 import { Title } from "components/shared/Title";
-import { AuthScreenImages } from "components/auth/AuthScreenImages";
+import { AuthScreenImages } from "components/auth/auth-screen-images";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { LocalhostDetector } from "components/auth/LocalhostDetector";
+import { LocalhostDetector } from "components/auth/localhost-detector";
 import { parseCookies } from "nookies";
 import { VersionDisplay } from "components/shared/VersionDisplay";
 import type { PostRegisterUserData } from "@snailycad/types/api";
@@ -24,22 +24,18 @@ import { GoogleReCaptchaProvider, useGoogleReCaptcha } from "react-google-recapt
 import { toastMessage } from "lib/toastMessage";
 import { ApiVerification } from "components/auth/api-verification";
 
-const INITIAL_VALUES = {
-  username: "",
-  password: "",
-  confirmPassword: "",
-  registrationCode: "",
-};
-
 interface Props {
   cad: Pick<cad, "registrationCode" | "version">;
+  isLocalhost: boolean;
+  isCORSError: boolean;
+  CORS_ORIGIN_URL: string | null;
 }
 
 const hasGoogleCaptchaSiteKey =
   typeof process.env.NEXT_PUBLIC_GOOGLE_CAPTCHA_SITE_KEY === "string" &&
   process.env.NEXT_PUBLIC_GOOGLE_CAPTCHA_SITE_KEY.length > 0;
 
-function Register({ cad }: Props) {
+function Register({ cad, CORS_ORIGIN_URL, isLocalhost, isCORSError }: Props) {
   const router = useRouter();
   const { state, execute } = useFetch();
   const t = useTranslations();
@@ -47,6 +43,14 @@ function Register({ cad }: Props) {
   const validate = handleValidate(AUTH_SCHEMA);
   const common = useTranslations();
   const { executeRecaptcha } = useGoogleReCaptcha();
+  const initialRegistrationCode = router.query.registrationCode ?? "";
+
+  const INITIAL_VALUES = {
+    username: "",
+    password: "",
+    confirmPassword: "",
+    registrationCode: initialRegistrationCode,
+  };
 
   React.useEffect(() => {
     if (!ALLOW_REGULAR_LOGIN) {
@@ -112,10 +116,15 @@ function Register({ cad }: Props) {
 
       <main className="flex flex-col items-center justify-center pt-20">
         <AuthScreenImages />
-        <LocalhostDetector />
-        <ApiVerification />
+        <LocalhostDetector isLocalhost={isLocalhost} />
+        <ApiVerification CORS_ORIGIN_URL={CORS_ORIGIN_URL} isCORSError={isCORSError} />
 
-        <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
+        <Formik
+          enableReinitialize
+          validate={validate}
+          onSubmit={onSubmit}
+          initialValues={INITIAL_VALUES}
+        >
           {({ setFieldValue, errors, isValid }) => (
             <Form className="w-full max-w-md p-6 bg-gray-100 rounded-lg shadow-md dark:bg-primary dark:border dark:border-secondary z-10">
               <header className="mb-3">
@@ -158,6 +167,7 @@ function Register({ cad }: Props) {
 
               {cad.registrationCode ? (
                 <TextField
+                  defaultValue={String(initialRegistrationCode)}
                   errorMessage={errors.registrationCode}
                   label={t("Auth.registrationCode")}
                   name="registrationCode"
@@ -225,12 +235,24 @@ export const getServerSideProps: GetServerSideProps = async ({ req, locale }) =>
   const userSavedLocale = cookies.sn_locale ?? null;
   const userSavedIsDarkTheme = cookies.sn_isDarkTheme ?? null;
 
-  const { data } = await handleRequest<cad | null>("/admin/manage/cad-settings").catch(() => ({
+  const { data } = await handleRequest<cad>("/admin/manage/cad-settings").catch(() => ({
     data: null,
   }));
 
+  const CORS_ORIGIN_URL = process.env.CORS_ORIGIN_URL ?? null;
+  const NEXT_PUBLIC_CLIENT_URL = process.env.NEXT_PUBLIC_CLIENT_URL ?? null;
+
+  const isWildcard = CORS_ORIGIN_URL?.includes("*") ?? false;
+  const isLocalhost =
+    (CORS_ORIGIN_URL?.includes("localhost") || NEXT_PUBLIC_CLIENT_URL?.includes("localhost")) ??
+    false;
+  const doURLsMatch = isWildcard ? true : CORS_ORIGIN_URL === NEXT_PUBLIC_CLIENT_URL;
+
   return {
     props: {
+      isLocalhost,
+      isCORSError: !doURLsMatch,
+      CORS_ORIGIN_URL: !doURLsMatch ? CORS_ORIGIN_URL : null,
       cad: data ?? {},
       userSavedIsDarkTheme,
       messages: await getTranslations(["auth"], userSavedLocale ?? locale),

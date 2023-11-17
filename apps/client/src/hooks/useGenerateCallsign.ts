@@ -8,7 +8,13 @@ import type {
 } from "@snailycad/types";
 import { generateCallsign } from "@snailycad/utils/callsign";
 
-type P = "callsign" | "callsign2" | "department" | "citizenId" | "incremental";
+type P =
+  | "callsign"
+  | "callsign2"
+  | "department"
+  | "citizenId"
+  | "incremental"
+  | "userDefinedCallsign";
 type Unit =
   | Pick<Officer, P | "divisions" | "activeDivisionCallsign">
   | Pick<EmsFdDeputy, P | "division">
@@ -21,7 +27,6 @@ export function useGenerateCallsign() {
   const miscCadSettings = cad?.miscCadSettings;
 
   function _generateCallsign(unit: Unit, templateId: TemplateId = "callsignTemplate") {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!unit) return "";
 
     const activeDivisionCallsign =

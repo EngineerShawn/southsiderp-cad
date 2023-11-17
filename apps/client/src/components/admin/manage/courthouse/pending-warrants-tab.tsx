@@ -1,14 +1,12 @@
-import { TabsContent } from "@radix-ui/react-tabs";
-import { Warrant, WhitelistStatus } from "@snailycad/types";
+import { type Warrant, WhitelistStatus } from "@snailycad/types";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { useTranslations } from "next-intl";
-import { Button } from "@snailycad/ui";
-import { FullDate } from "components/shared/FullDate";
+import { Button, FullDate, TabsContent } from "@snailycad/ui";
 import useFetch from "lib/useFetch";
 import type { GetManagePendingWarrants, PutManagePendingWarrants } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { CreateWarrantModal } from "components/leo/modals/CreateWarrantModal";
 import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
@@ -18,7 +16,7 @@ import { useInvalidateQuery } from "hooks/use-invalidate-query";
 type PendingWarrant = GetManagePendingWarrants["pendingWarrants"][number];
 
 export function PendingWarrantsTab() {
-  const { openModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const common = useTranslations("Common");
   const tableState = useTableState();
@@ -39,7 +37,7 @@ export function PendingWarrantsTab() {
 
   function handleViewWarrant(warrant: Warrant) {
     warrantState.setTempId(warrant.id);
-    openModal(ModalIds.CreateWarrant, { isActive: true });
+    modalState.openModal(ModalIds.CreateWarrant, { isActive: true });
   }
 
   async function handleUpdate(id: string, type: WhitelistStatus) {
@@ -58,7 +56,12 @@ export function PendingWarrantsTab() {
   }
 
   return (
-    <TabsContent value="pending-warrants">
+    <TabsContent
+      tabName={`${t("Management.MANAGE_PENDING_WARRANTS")} ${
+        asyncTable.isInitialLoading ? "" : ` (${asyncTable.pagination.totalDataCount})`
+      }`}
+      value="pending-warrants"
+    >
       <h3 className="font-semibold text-xl">{t("Management.MANAGE_PENDING_WARRANTS")}</h3>
 
       {asyncTable.noItemsAvailable ? (

@@ -1,15 +1,15 @@
 import {
-  Officer,
-  EmsFdDeputy,
-  Citizen,
-  CombinedLeoUnit,
-  MiscCadSettings,
-  StatusValue,
-  Value,
+  type Officer,
+  type EmsFdDeputy,
+  type Citizen,
+  type CombinedLeoUnit,
+  type MiscCadSettings,
+  type StatusValue,
+  type Value,
   Feature,
 } from "@prisma/client";
 import { generateCallsign } from "@snailycad/utils";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import type { HandlePanicButtonPressedOptions } from "lib/leo/send-panic-button-webhook";
 import { getTranslator } from "utils/get-translator";
 
@@ -47,8 +47,9 @@ export async function createWebhookData(options: CreateWebhookDataOptions<Unit>)
   const status = options.unit.status?.value.value ?? "Off-duty";
   const unitName = isNotCombined ? `${unit.citizen.name} ${unit.citizen.surname}` : "";
   const callsign = generateCallsign(unit as any, options.cad.miscCadSettings.callsignTemplate);
-  const badgeNumber = isBadgeNumberEnabled && isNotCombined ? `${unit.badgeNumber} - ` : "";
-  const officerName = isNotCombined ? `${badgeNumber}${callsign} ${unitName}` : `${callsign}`;
+  const badgeNumberString =
+    isBadgeNumberEnabled && isNotCombined ? `${unit.badgeNumberString} - ` : "";
+  const officerName = isNotCombined ? `${badgeNumberString}${callsign} ${unitName}` : `${callsign}`;
 
   return {
     embeds: [
@@ -90,12 +91,13 @@ export async function createPanicButtonEmbed(
 
   const unitName = isCombined ? null : `${unit.citizen.name} ${unit.citizen.surname}`;
   const template = isCombined
-    ? options.cad.miscCadSettings.pairedUnitSymbol
+    ? options.cad.miscCadSettings.pairedUnitTemplate
     : options.cad.miscCadSettings.callsignTemplate;
 
   const callsign = generateCallsign(unit as any, template);
-  const badgeNumber = isBadgeNumberEnabled || isCombined ? "" : `${unit.badgeNumber} - `;
-  const officerName = isCombined ? `${callsign}` : `${badgeNumber}${callsign} ${unitName}`;
+  const badgeNumberString =
+    isBadgeNumberEnabled || isCombined ? "" : `${unit.badgeNumberString} - `;
+  const officerName = isCombined ? `${callsign}` : `${badgeNumberString}${callsign} ${unitName}`;
 
   return {
     embeds: [

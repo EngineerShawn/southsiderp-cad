@@ -4,12 +4,12 @@ import { useTranslations } from "use-intl";
 import type { FormikHelpers } from "formik";
 import { toastMessage } from "./toastMessage";
 import { useModal } from "../state/modalState";
-import { ModalIds } from "../types/ModalIds";
+import { ModalIds } from "../types/modal-ids";
 import { useAuth } from "../context/AuthContext";
 import { getNextI18nConfig } from "./i18n/getNextI18nConfig";
 import {
-  ErrorMessage,
-  ErrorResponseData,
+  type ErrorMessage,
+  type ErrorResponseData,
   getErrorObj,
   getFeatureNotEnabledError,
   isAxiosError,
@@ -39,11 +39,12 @@ interface Return<Data> {
 }
 
 let config: Awaited<ReturnType<typeof getNextI18nConfig>> | undefined;
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let handleRequest: typeof import("./fetch").handleRequest | undefined;
 
 export default function useFetch({ overwriteState }: UseFetchOptions = { overwriteState: null }) {
   const [state, setState] = React.useState<State | null>(null);
-  const { openModal } = useModal();
+  const modalState = useModal();
   const { user } = useAuth();
 
   const t = useTranslations("Errors");
@@ -95,17 +96,17 @@ export default function useFetch({ overwriteState }: UseFetchOptions = { overwri
       console.error(JSON.stringify({ DEBUG: errorObj }, null, 2));
 
       if (response?.response?.status === 401) {
-        openModal(ModalIds.ReauthorizeSession);
+        modalState.openModal(ModalIds.ReauthorizeSession);
       }
 
       if (error === "noActiveOfficer") {
-        openModal(ModalIds.SelectOfficer, { includeStatuses: true });
+        modalState.openModal(ModalIds.SelectOfficer, { includeStatuses: true });
       }
 
       let hasAddedError = false as boolean; // as boolean because eslint gets upset otherwise.
       if (options.helpers) {
         for (const error of errors) {
-          Object.entries(error).map(([key, value]) => {
+          Object.entries(error).forEach(([key, value]) => {
             const translationOptions = typeof value === "string" ? undefined : value.data;
             const translationKey = typeof value === "string" ? value : value.message;
 

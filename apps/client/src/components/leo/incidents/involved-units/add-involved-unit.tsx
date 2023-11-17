@@ -2,7 +2,7 @@ import { useTranslations } from "use-intl";
 import { Loader, Button, AsyncListSearchField, Item } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { makeUnitName } from "lib/utils";
@@ -16,7 +16,6 @@ import type {
   LeoIncident,
   Officer,
 } from "@snailycad/types";
-import { shallow } from "zustand/shallow";
 import { useDispatchState } from "state/dispatch/dispatch-state";
 import { useImageUrl } from "hooks/useImageUrl";
 import { ImageWrapper } from "components/shared/image-wrapper";
@@ -32,24 +31,21 @@ export function AddInvolvedUnitToIncidentModal<T extends LeoIncident | EmsFdInci
   type,
   incident,
 }: Props<T>) {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const { state, execute } = useFetch();
   const { generateCallsign } = useGenerateCallsign();
-  const { activeIncidents, setActiveIncidents } = useDispatchState(
-    (state) => ({
-      setActiveIncidents: state.setActiveIncidents,
-      activeIncidents: state.activeIncidents,
-    }),
-    shallow,
-  );
+  const { activeIncidents, setActiveIncidents } = useDispatchState((state) => ({
+    setActiveIncidents: state.setActiveIncidents,
+    activeIncidents: state.activeIncidents,
+  }));
 
   const { makeImageUrl } = useImageUrl();
   const t = useTranslations("Calls");
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.AddInvolvedUnit);
+    modalState.closeModal(ModalIds.AddInvolvedUnit);
   }
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
@@ -92,24 +88,25 @@ export function AddInvolvedUnitToIncidentModal<T extends LeoIncident | EmsFdInci
 
   return (
     <Modal
-      isOpen={isOpen(ModalIds.AddInvolvedUnit)}
+      isOpen={modalState.isOpen(ModalIds.AddInvolvedUnit)}
       onClose={handleClose}
       title={t("addUnit")}
       className="w-[600px]"
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ setValues, values, errors }) => (
+        {({ setValues, setFieldValue, values, errors }) => (
           <Form>
             <AsyncListSearchField<Officer | EmsFdDeputy | CombinedLeoUnit>
               autoFocus
-              setValues={({ localValue, node }) => {
-                const unitQuery =
-                  typeof localValue !== "undefined" ? { unitQuery: localValue } : {};
-                const unitId = node
-                  ? { unit: node.key as string, unitQuery: localValue || values.unitQuery }
-                  : {};
-
-                setValues({ ...values, ...unitQuery, ...unitId });
+              onInputChange={(value) => setFieldValue("unitQuery", value)}
+              onSelectionChange={(node) => {
+                if (node?.value) {
+                  setValues({
+                    ...values,
+                    unit: node.key as string,
+                    unitQuery: node.textValue,
+                  });
+                }
               }}
               localValue={values.unitQuery}
               errorMessage={errors.unit}

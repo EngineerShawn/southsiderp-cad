@@ -3,17 +3,18 @@ import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { QueryParams, PathParams, BodyParams } from "@tsed/platform-params";
 import { ContentType, Description, Get, Post } from "@tsed/schema";
 import { userProperties } from "lib/auth/getSessionUser";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { leoProperties } from "utils/leo/includes";
+
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { Prisma, Rank, WhitelistStatus } from "@prisma/client";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { Prisma, WhitelistStatus } from "@prisma/client";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 
 import type * as APITypes from "@snailycad/types/api";
-import { AcceptDeclineType, ACCEPT_DECLINE_TYPES } from "../units/manage-units-controller";
+import { type AcceptDeclineType, ACCEPT_DECLINE_TYPES } from "../units/manage-units-controller";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 
-const recordsInclude = {
+export const recordsLogsInclude = {
   officer: { include: leoProperties },
   violations: {
     include: {
@@ -32,7 +33,6 @@ export class AdminManageCitizensController {
   @Get("/records-logs")
   @Description("Get all the record logs within the CAD")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewCitizens,
       Permissions.ManageCitizens,
@@ -75,10 +75,9 @@ export class AdminManageCitizensController {
     return { citizens, totalCount };
   }
 
-  @Get("/pending-arrest-reports")
+  @Get("/pending-citizen-records")
   @Description("Get all the record logs within the CAD")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewCitizens,
       Permissions.ManageCitizens,
@@ -86,11 +85,11 @@ export class AdminManageCitizensController {
       Permissions.ViewCitizenLogs,
     ],
   })
-  async getPendingArrestReports(
+  async getPendingCitizenRecords(
     @QueryParams("skip", Number) skip = 0,
     @QueryParams("includeAll", Boolean) includeAll = false,
-  ): Promise<APITypes.GetManagePendingArrestReports> {
-    const [totalCount, arrestReports] = await prisma.$transaction([
+  ): Promise<APITypes.GetManagePendingCitizenRecords> {
+    const [totalCount, pendingCitizenRecords] = await prisma.$transaction([
       prisma.recordLog.count({
         where: { records: { status: WhitelistStatus.PENDING } },
       }),
@@ -101,8 +100,8 @@ export class AdminManageCitizensController {
         skip: includeAll ? undefined : skip,
         include: {
           warrant: { include: { officer: { include: leoProperties } } },
-          records: { include: recordsInclude },
-          business: { include: { citizen: true } },
+          records: { include: recordsLogsInclude },
+          business: { include: { employees: { where: { role: { as: "OWNER" } } } } },
           citizen: {
             include: { user: { select: userProperties }, gender: true, ethnicity: true },
           },
@@ -110,7 +109,7 @@ export class AdminManageCitizensController {
       }),
     ]);
 
-    return { arrestReports, totalCount };
+    return { pendingCitizenRecords, totalCount };
   }
 
   @Get("/records-logs/:citizenId")
@@ -120,15 +119,18 @@ export class AdminManageCitizensController {
     @QueryParams("includeAll", Boolean) includeAll = false,
   ): Promise<APITypes.GetManageRecordsLogsCitizenData> {
     const [totalCount, recordsLogs] = await prisma.$transaction([
-      prisma.recordLog.count({ where: { citizenId } }),
+      prisma.recordLog.count({
+        where: { OR: [{ citizenId }, { citizen: { socialSecurityNumber: citizenId } }] },
+      }),
       prisma.recordLog.findMany({
+        orderBy: { createdAt: "desc" },
+        where: { OR: [{ citizenId }, { citizen: { socialSecurityNumber: citizenId } }] },
         take: includeAll ? undefined : 35,
         skip: includeAll ? undefined : skip,
-        where: { citizenId },
-        orderBy: { createdAt: "desc" },
         include: {
           warrant: { include: { officer: { include: leoProperties } } },
-          records: { include: recordsInclude },
+          records: { include: recordsLogsInclude },
+          business: { include: { employees: { where: { role: { as: "OWNER" } } } } },
           citizen: {
             include: { user: { select: userProperties }, gender: true, ethnicity: true },
           },
@@ -142,10 +144,9 @@ export class AdminManageCitizensController {
   @Post("/records-logs/:id")
   @Description("Accept or decline a record by it's id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCitizens, Permissions.ViewCitizenLogs],
   })
-  async acceptOrDeclineArrestReport(
+  async acceptOrDeclinePendingCitizenLog(
     @PathParams("id") id: string,
     @BodyParams("type") type: AcceptDeclineType | null,
   ): Promise<APITypes.PostCitizenRecordLogsData> {
@@ -166,7 +167,7 @@ export class AdminManageCitizensController {
       data: {
         status: type === "ACCEPT" ? WhitelistStatus.ACCEPTED : WhitelistStatus.DECLINED,
       },
-      include: recordsInclude,
+      include: recordsLogsInclude,
     });
 
     return updated;

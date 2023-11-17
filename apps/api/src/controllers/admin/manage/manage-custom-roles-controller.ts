@@ -1,12 +1,12 @@
-import { Prisma, Rank } from "@prisma/client";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { type Prisma } from "@prisma/client";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
 import { CUSTOM_ROLE_SCHEMA } from "@snailycad/schemas";
 import {
   BodyParams,
   Context,
   MultipartFile,
   PathParams,
-  PlatformMulterFile,
+  type PlatformMulterFile,
   QueryParams,
   UseBeforeEach,
 } from "@tsed/common";
@@ -15,7 +15,7 @@ import { NotFound } from "@tsed/exceptions";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { validateImageURL } from "lib/images/validate-image-url";
@@ -62,7 +62,6 @@ export class AdminManageCustomRolesController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomRoles],
   })
   @Description("Create a new custom role.")
@@ -101,7 +100,6 @@ export class AdminManageCustomRolesController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomRoles],
   })
   @Description("Update a custom role by its ID.")
@@ -143,7 +141,6 @@ export class AdminManageCustomRolesController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomRoles],
   })
   @Description("Delete a custom role by its ID.")

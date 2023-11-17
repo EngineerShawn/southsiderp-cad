@@ -1,5 +1,5 @@
 import * as React from "react";
-import { PenalCodeGroup, Rank, ValueType } from "@snailycad/types";
+import { type PenalCodeGroup, ValueType } from "@snailycad/types";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
@@ -9,14 +9,13 @@ import { SearchArea } from "components/shared/search/search-area";
 import { Title } from "components/shared/Title";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { Permissions } from "@snailycad/permissions";
-import { Button, buttonSizes, buttonVariants } from "@snailycad/ui";
+import { Button, buttonVariants } from "@snailycad/ui";
 import { useTranslations } from "use-intl";
 import dynamic from "next/dynamic";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import Link from "next/link";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { useModal } from "state/modalState";
-import { classNames } from "lib/classNames";
 import type { DeletePenalCodeGroupsData, PutValuePositionsData } from "@snailycad/types/api";
 import useFetch from "lib/useFetch";
 import { hasTableDataChanged } from "lib/admin/values/utils";
@@ -49,7 +48,7 @@ interface Props {
 export default function PenalCodeGroupsPage(props: Props) {
   const t = useTranslations("PENAL_CODE_GROUP");
   const common = useTranslations("Common");
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { execute, state } = useFetch();
   const router = useRouter();
 
@@ -108,12 +107,12 @@ export default function PenalCodeGroupsPage(props: Props) {
 
   function handleEditGroup(groupId: string) {
     groupState.setTempId(groupId);
-    openModal(ModalIds.ManagePenalCodeGroup);
+    modalState.openModal(ModalIds.ManagePenalCodeGroup);
   }
 
   function handleDeleteGroupClick(groupId: string) {
     groupState.setTempId(groupId);
-    openModal(ModalIds.AlertDeleteGroup);
+    modalState.openModal(ModalIds.AlertDeleteGroup);
   }
 
   async function handleDeleteGroup() {
@@ -127,14 +126,13 @@ export default function PenalCodeGroupsPage(props: Props) {
     if (json) {
       asyncTable.remove(tempGroup.id);
       groupState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteGroup);
+      modalState.closeModal(ModalIds.AlertDeleteGroup);
     }
   }
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ManageValuePenalCode],
       }}
     >
@@ -152,7 +150,9 @@ export default function PenalCodeGroupsPage(props: Props) {
         </div>
 
         <div className="flex gap-2">
-          <Button onPress={() => openModal(ModalIds.ManagePenalCodeGroup)}>{t("ADD")}</Button>
+          <Button onPress={() => modalState.openModal(ModalIds.ManagePenalCodeGroup)}>
+            {t("ADD")}
+          </Button>
           {/* values is set to non-empty array */}
           <OptionsDropdown type={ValueType.PENAL_CODE} valueLength={asyncTable.items.length} />
         </div>
@@ -174,7 +174,7 @@ export default function PenalCodeGroupsPage(props: Props) {
           actions: (
             <>
               <Link
-                className={classNames("rounded-md", buttonSizes.xs, buttonVariants.default)}
+                className={buttonVariants({ size: "xs" })}
                 href={`/admin/values/penal-code/${group.id}`}
               >
                 {common("view")}

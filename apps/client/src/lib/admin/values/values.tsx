@@ -1,4 +1,4 @@
-import { LICENSE_LABELS } from "components/admin/values/manage-modal/LicenseFields";
+import { useLicenseLabels } from "components/admin/values/manage-modal/license-fields";
 import { yesOrNoText } from "lib/utils";
 import { useTranslations } from "next-intl";
 import {
@@ -10,22 +10,24 @@ import {
   type VehicleValue,
   type Value,
   ShouldDoType,
-  QualificationValue,
-  CallTypeValue,
+  type QualificationValue,
+  type CallTypeValue,
   type AnyValue,
-  AddressValue,
+  type AddressValue,
+  type DriversLicenseCategoryValue,
 } from "@snailycad/types";
 import {
   SHOULD_DO_LABELS,
   useDefaultDepartments,
   WHAT_PAGES_LABELS,
-} from "components/admin/values/manage-modal/StatusValueFields";
-import { DEPARTMENT_LABELS } from "components/admin/values/manage-modal/DepartmentFields";
+} from "components/admin/values/manage-modal/status-value-fields";
+import { DEPARTMENT_LABELS } from "components/admin/values/manage-modal/department-fields";
 import { isBaseValue, hasValueObj } from "@snailycad/utils";
 import { useImageUrl } from "hooks/useImageUrl";
 import { makeDefaultWhatPages } from "./utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ImageWrapper } from "components/shared/image-wrapper";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 
 const TYPE_LABELS = {
   [StatusValueType.SITUATION_CODE]: "Situation Code",
@@ -34,8 +36,9 @@ const TYPE_LABELS = {
 
 export function useTableDataOfType(type: ValueType) {
   const common = useTranslations("Common");
-  const defaultDepartments = useDefaultDepartments();
+  const { makeDefaultDepartmentsLabels } = useDefaultDepartments();
   const { makeImageUrl } = useImageUrl();
+  const { LICENSE_LABELS } = useLicenseLabels();
 
   function get(value: AnyValue) {
     // state mismatch prevention
@@ -59,16 +62,13 @@ export function useTableDataOfType(type: ValueType) {
       case ValueType.CODES_10: {
         const v = value as StatusValue;
         const whatPages = makeDefaultWhatPages(v);
-        const departments = defaultDepartments(v);
+        const departments = makeDefaultDepartmentsLabels(v);
 
         return {
           shouldDo: SHOULD_DO_LABELS[v.shouldDo],
           type: TYPE_LABELS[v.type],
           whatPages: whatPages?.map((v) => WHAT_PAGES_LABELS[v]).join(", "),
-          departments:
-            v.shouldDo === ShouldDoType.SET_ON_DUTY
-              ? "—"
-              : departments.map((v) => v.label).join(", "),
+          departments: v.shouldDo === ShouldDoType.SET_ON_DUTY ? "—" : departments.join(", "),
           color: v.color ? (
             <>
               <span
@@ -92,6 +92,7 @@ export function useTableDataOfType(type: ValueType) {
           isDefaultDepartment: common(yesOrNoText(v.isDefaultDepartment)),
           defaultOfficerRank: v.defaultOfficerRank?.value ?? common("none"),
           isConfidential: common(yesOrNoText(v.isConfidential)),
+          customTemplate: v.customTemplate || common("none"),
         };
       }
       case ValueType.DIVISION: {
@@ -99,11 +100,31 @@ export function useTableDataOfType(type: ValueType) {
 
         return {
           callsign: v.callsign || common("none"),
-          pairedUnitTemplate: v.pairedUnitTemplate ?? common("none"),
+          pairedUnitTemplate: v.pairedUnitTemplate || common("none"),
           department: v.department.value.value,
         };
       }
-      case ValueType.VEHICLE:
+      case ValueType.VEHICLE: {
+        const v = value as VehicleValue;
+        const imgUrl = makeImageUrl("values", v.imageId);
+
+        return {
+          image: imgUrl ? (
+            <ImageWrapper
+              quality={70}
+              alt={v.value.value}
+              loading="lazy"
+              src={imgUrl}
+              width={50}
+              height={50}
+              className="object-cover"
+            />
+          ) : (
+            "—"
+          ),
+          gameHash: v.hash || common("none"),
+        };
+      }
       case ValueType.WEAPON: {
         const v = value as VehicleValue;
 
@@ -144,7 +165,7 @@ export function useTableDataOfType(type: ValueType) {
       case ValueType.OFFICER_RANK: {
         const v = value as Value;
         const imgUrl = makeImageUrl("values", v.officerRankImageId);
-        const departments = defaultDepartments(v);
+        const departments = makeDefaultDepartmentsLabels(v);
 
         return {
           image: imgUrl ? (
@@ -160,7 +181,7 @@ export function useTableDataOfType(type: ValueType) {
           ) : (
             "—"
           ),
-          departments: departments.map((v) => v.label).join(", "),
+          departments: <CallDescription nonCard data={{ description: departments.join(", ") }} />,
         };
       }
       case ValueType.CALL_TYPE: {
@@ -168,6 +189,15 @@ export function useTableDataOfType(type: ValueType) {
 
         return {
           priority: v.priority ?? common("none"),
+          isDisposition: common(yesOrNoText(v.isDisposition)),
+        };
+      }
+      case ValueType.DRIVERSLICENSE_CATEGORY: {
+        const v = value as DriversLicenseCategoryValue;
+
+        return {
+          category: v.type,
+          description: v.description || common("none"),
         };
       }
       default: {
@@ -190,7 +220,6 @@ export function useTableHeadersOfType(type: ValueType): ColumnDef<{ id: string }
         { header: common("postal"), accessorKey: "postal" },
       ];
     }
-
     case ValueType.CODES_10: {
       return [
         { header: t("shouldDo"), accessorKey: "shouldDo" },
@@ -208,6 +237,7 @@ export function useTableHeadersOfType(type: ValueType): ColumnDef<{ id: string }
         { header: t("isDefaultDepartment"), accessorKey: "isDefaultDepartment" },
         { header: t("defaultOfficerRank"), accessorKey: "defaultOfficerRank" },
         { header: t("isConfidential"), accessorKey: "isConfidential" },
+        { header: t("customCallsignTemplate"), accessorKey: "customTemplate" },
       ];
     }
     case ValueType.DIVISION: {
@@ -217,7 +247,12 @@ export function useTableHeadersOfType(type: ValueType): ColumnDef<{ id: string }
         { header: t("pairedUnitTemplate"), accessorKey: "pairedUnitTemplate" },
       ];
     }
-    case ValueType.VEHICLE:
+    case ValueType.VEHICLE: {
+      return [
+        { header: t("image"), accessorKey: "image" },
+        { header: t("gameHash"), accessorKey: "gameHash" },
+      ];
+    }
     case ValueType.WEAPON: {
       return [{ header: t("gameHash"), accessorKey: "gameHash" }];
     }
@@ -241,7 +276,16 @@ export function useTableHeadersOfType(type: ValueType): ColumnDef<{ id: string }
       ];
     }
     case ValueType.CALL_TYPE: {
-      return [{ header: t("priority"), accessorKey: "priority" }];
+      return [
+        { header: t("priority"), accessorKey: "priority" },
+        { header: t("isDisposition"), accessorKey: "isDisposition" },
+      ];
+    }
+    case ValueType.DRIVERSLICENSE_CATEGORY: {
+      return [
+        { header: t("category"), accessorKey: "category" },
+        { header: common("description"), accessorKey: "description" },
+      ];
     }
     default: {
       return [];

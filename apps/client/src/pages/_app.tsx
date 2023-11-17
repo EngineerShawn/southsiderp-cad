@@ -1,17 +1,17 @@
+import "styles/globals.css";
+import "styles/fonts.css";
+import "styles/nprogress.css";
+
 import * as React from "react";
 import type { AppProps } from "next/app";
-import { SSRProvider } from "@react-aria/ssr";
 import { NextIntlProvider } from "next-intl";
 import { AuthProvider } from "context/AuthContext";
 import { ValuesProvider } from "context/ValuesContext";
 import { CitizenProvider } from "context/CitizenContext";
-import "styles/globals.scss";
-import "styles/fonts.scss";
-import "styles/nprogress.scss";
-import { SocketProvider } from "@casper124578/use-socket.io";
+import { SocketProvider } from "@casperiv/use-socket.io";
 import { getAPIUrl } from "@snailycad/utils/api-url";
 import type { User } from "@snailycad/types";
-import { useMounted } from "@casper124578/useful/hooks/useMounted";
+import { useMounted } from "@casperiv/useful/hooks/useMounted";
 import dynamic from "next/dynamic";
 import Head from "next/head";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -21,7 +21,7 @@ import type { SetSentryTagsOptions } from "lib/set-sentry-tags";
 
 const ReauthorizeSessionModal = dynamic(
   async () =>
-    (await import("components/auth/login/ReauthorizeSessionModal")).ReauthorizeSessionModal,
+    (await import("components/auth/login/reauthorize-session-modal")).ReauthorizeSessionModal,
   { ssr: false },
 );
 
@@ -37,6 +37,8 @@ export default function App({ Component, router, pageProps, ...rest }: AppProps)
   const url = `${protocol}//${host}`;
   const user = pageProps.session as User | null;
   const locale = user?.locale ?? router.locale ?? "en";
+  const cad = pageProps.cad ?? pageProps.session?.cad ?? null;
+  const timeZone = cad?.timeZone || undefined;
 
   React.useEffect(() => {
     const handleRouteStart = async () => {
@@ -72,45 +74,42 @@ export default function App({ Component, router, pageProps, ...rest }: AppProps)
     });
   }, [isMounted, pageProps.cad, locale]);
 
-  const isServer = typeof window === "undefined";
-
   const requiresDnd = DRAG_AND_DROP_PAGES.includes(router.pathname);
   const DndProviderWrapper = requiresDnd ? DndProvider : React.Fragment;
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SSRProvider>
-        <SocketProvider uri={url} options={{ reconnectionDelay: 10_000, autoConnect: !isServer }}>
-          <AuthProvider initialData={pageProps}>
-            <NextIntlProvider
-              defaultTranslationValues={{
-                span: (children) => <span className="font-semibold">{children}</span>,
-              }}
-              onError={console.warn}
-              locale={locale}
-              messages={pageProps.messages}
-              now={new Date()}
-            >
-              <DndProviderWrapper>
-                <ValuesProvider router={router} initialData={pageProps}>
-                  <CitizenProvider initialData={pageProps}>
-                    <Head>
-                      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                    </Head>
-                    {isMounted ? (
-                      <>
-                        <ReauthorizeSessionModal />
-                        <Toaster position="top-right" />
-                      </>
-                    ) : null}
-                    <Component {...pageProps} err={(rest as any).err} />
-                  </CitizenProvider>
-                </ValuesProvider>
-              </DndProviderWrapper>
-            </NextIntlProvider>
-          </AuthProvider>
-        </SocketProvider>
-      </SSRProvider>
+      <SocketProvider uri={url}>
+        <AuthProvider initialData={pageProps}>
+          <NextIntlProvider
+            defaultTranslationValues={{
+              span: (children) => <span className="font-semibold">{children}</span>,
+            }}
+            timeZone={timeZone}
+            onError={console.warn}
+            locale={locale}
+            messages={pageProps.messages}
+            now={new Date()}
+          >
+            <DndProviderWrapper>
+              <ValuesProvider router={router} initialData={pageProps}>
+                <CitizenProvider initialData={pageProps}>
+                  <Head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                  </Head>
+                  {isMounted ? (
+                    <>
+                      <ReauthorizeSessionModal />
+                      <Toaster position="top-right" />
+                    </>
+                  ) : null}
+                  <Component {...pageProps} err={(rest as any).err} />
+                </CitizenProvider>
+              </ValuesProvider>
+            </DndProviderWrapper>
+          </NextIntlProvider>
+        </AuthProvider>
+      </SocketProvider>
     </QueryClientProvider>
   );
 }

@@ -1,4 +1,12 @@
-import { Rank, type cad, WhitelistStatus, Feature, User, Prisma, CustomRole } from "@prisma/client";
+/* eslint-disable unicorn/number-literal-case */
+import {
+  Rank,
+  WhitelistStatus,
+  type User,
+  Prisma,
+  type CustomRole,
+  DiscordWebhookType,
+} from "@prisma/client";
 import { PathParams, BodyParams, Context, QueryParams } from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { BadRequest, NotFound } from "@tsed/exceptions";
@@ -6,7 +14,7 @@ import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { userProperties } from "lib/auth/getSessionUser";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import {
   BAN_SCHEMA,
   UPDATE_USER_SCHEMA,
@@ -20,11 +28,14 @@ import { citizenInclude } from "controllers/citizen/CitizenController";
 import { validateSchema } from "lib/data/validate-schema";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
-import { isFeatureEnabled } from "lib/cad";
 import { manyToManyHelper } from "lib/data/many-to-many";
 import type * as APITypes from "@snailycad/types/api";
 import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
 import { isDiscordIdInUse } from "lib/discord/utils";
+import { getTranslator } from "~/utils/get-translator";
+import { sendRawWebhook, sendDiscordWebhook } from "~/lib/discord/webhooks";
+import { type APIEmbed } from "discord-api-types/v10";
+import { getPrismaModelOrderBy } from "~/utils/order-by";
 
 const manageUsersSelect = (selectCitizens: boolean) =>
   ({
@@ -33,7 +44,7 @@ const manageUsersSelect = (selectCitizens: boolean) =>
     apiToken: { include: { logs: { take: 35, orderBy: { createdAt: "desc" } } } },
     roles: true,
     User2FA: true,
-  } as const);
+  }) as const;
 
 @UseBeforeEach(IsAuth)
 @Controller("/admin/manage/users")
@@ -46,7 +57,6 @@ export class ManageUsersController {
 
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewUsers,
       Permissions.ManageUsers,
@@ -60,6 +70,7 @@ export class ManageUsersController {
     @QueryParams("query", String) query = "",
     @QueryParams("pendingOnly", Boolean) pendingOnly = false,
     @QueryParams("includeAll", Boolean) includeAll = false,
+    @QueryParams("sorting") sorting = "",
   ): Promise<APITypes.GetManageUsersData> {
     const where =
       query || pendingOnly
@@ -68,7 +79,9 @@ export class ManageUsersController {
               ? {
                   OR: [
                     { username: { contains: query, mode: Prisma.QueryMode.insensitive } },
-                    { id: query },
+                    { id: { contains: query, mode: Prisma.QueryMode.insensitive } },
+                    { steamId: { contains: query, mode: Prisma.QueryMode.insensitive } },
+                    { discordId: { contains: query, mode: Prisma.QueryMode.insensitive } },
                   ],
                 }
               : {}),
@@ -76,9 +89,10 @@ export class ManageUsersController {
           }
         : undefined;
 
+    const orderBy = getPrismaModelOrderBy(sorting);
     const [totalCount, pendingCount] = await prisma.$transaction([
       prisma.user.count({ where }),
-      prisma.user.count({ where: { whitelistStatus: WhitelistStatus.PENDING } }),
+      prisma.user.count({ orderBy, where: { whitelistStatus: WhitelistStatus.PENDING } }),
     ]);
 
     const shouldIncludeAll = includeAll;
@@ -94,7 +108,6 @@ export class ManageUsersController {
 
   @Get("/prune")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async getInactiveUsers(@QueryParams("days", Number) days = 30) {
@@ -123,7 +136,6 @@ export class ManageUsersController {
 
   @Delete("/prune")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async pruneInactiveUsers(
@@ -154,7 +166,6 @@ export class ManageUsersController {
 
   @Get("/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewUsers,
       Permissions.ManageUsers,
@@ -186,7 +197,6 @@ export class ManageUsersController {
 
   @Post("/search")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async searchUsers(
@@ -203,7 +213,6 @@ export class ManageUsersController {
 
   @Put("/permissions/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async updateUserPermissionsById(
@@ -246,7 +255,6 @@ export class ManageUsersController {
 
   @Put("/roles/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async updateUserRolesById(
@@ -271,6 +279,7 @@ export class ManageUsersController {
     const disconnectConnectArr = manyToManyHelper(
       user.roles.map((v) => v.id),
       data.roles as string[],
+      { showUpsert: false },
     );
 
     await prisma.$transaction(
@@ -295,7 +304,6 @@ export class ManageUsersController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async updateUserById(
@@ -313,10 +321,6 @@ export class ManageUsersController {
       throw new NotFound("notFound");
     }
 
-    if (user.rank === Rank.OWNER && data.rank !== Rank.OWNER) {
-      throw new ExtendedBadRequest({ rank: "cannotUpdateOwnerRank" });
-    }
-
     if (data.discordId && (await isDiscordIdInUse(data.discordId, user.id))) {
       throw new ExtendedBadRequest({ discordId: "discordIdInUse" });
     }
@@ -327,14 +331,7 @@ export class ManageUsersController {
       },
       data: {
         username: data.username,
-        isLeo: data.isLeo,
-        isSupervisor: data.isSupervisor,
-        isDispatch: data.isDispatch,
-        isEmsFd: data.isEmsFd,
-        isTow: data.isTow,
-        isTaxi: data.isTaxi,
         steamId: data.steamId,
-        rank: user.rank === Rank.OWNER ? Rank.OWNER : Rank[data.rank as Rank],
         discordId: data.discordId,
       },
       select: manageUsersSelect(false),
@@ -351,7 +348,6 @@ export class ManageUsersController {
 
   @Post("/temp-password/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
   })
   async giveUserTempPassword(
@@ -402,7 +398,6 @@ export class ManageUsersController {
 
   @Post("/:id/:type")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.BanUsers],
   })
   async banUserById(
@@ -460,7 +455,6 @@ export class ManageUsersController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.DeleteUsers],
   })
   async deleteUserAccount(
@@ -498,7 +492,6 @@ export class ManageUsersController {
 
   @Post("/pending/:id/:type")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers],
   })
   async acceptOrDeclineUser(
@@ -513,8 +506,7 @@ export class ManageUsersController {
     const user = await prisma.user.findFirst({
       where: {
         id: userId,
-        whitelistStatus: WhitelistStatus.PENDING,
-        NOT: { rank: Rank.OWNER },
+        NOT: { rank: Rank.OWNER, whitelistStatus: WhitelistStatus.ACCEPTED },
       },
       select: { id: true, username: true, whitelistStatus: true },
     });
@@ -527,7 +519,7 @@ export class ManageUsersController {
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: { whitelistStatus },
-      select: { id: true, username: true, whitelistStatus: true },
+      select: { id: true, username: true, whitelistStatus: true, locale: true, discordId: true },
     });
 
     await createAuditLogEntry({
@@ -539,30 +531,19 @@ export class ManageUsersController {
       prisma,
       executorId: sessionUserId,
     });
+    await sendUserWhitelistStatusChangeWebhook(updatedUser);
 
     return true;
   }
 
   @Delete("/:userId/api-token")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers],
   })
   async revokeApiToken(
     @Context("sessionUserId") sessionUserId: string,
     @PathParams("userId") userId: string,
-    @Context("cad") cad: cad & { features?: Record<Feature, boolean> },
   ): Promise<APITypes.DeleteManageUserRevokeApiTokenData> {
-    const isUserAPITokensEnabled = isFeatureEnabled({
-      feature: Feature.USER_API_TOKENS,
-      features: cad.features,
-      defaultReturn: false,
-    });
-
-    if (!isUserAPITokensEnabled) {
-      throw new BadRequest("featureNotEnabled");
-    }
-
     const user = await prisma.user.findUnique({
       where: {
         id: userId,
@@ -589,7 +570,6 @@ export class ManageUsersController {
 
   @Delete("/:userId/2fa")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUsers],
   })
   async disableUser2FA(
@@ -620,7 +600,7 @@ export class ManageUsersController {
 
   private parsePermissions(data: Record<string, string>, user: { roles: CustomRole[] }) {
     const permissions: string[] = [];
-    const values = Object.values(Permissions);
+    const values = Object.keys(Permissions);
     const rolePermissions = user.roles.flatMap((r) => r.permissions);
 
     for (const name of values) {
@@ -635,4 +615,45 @@ export class ManageUsersController {
 
     return permissions;
   }
+}
+
+export async function sendUserWhitelistStatusChangeWebhook(
+  user: Pick<User, "id" | "username" | "discordId" | "whitelistStatus">,
+) {
+  const t = await getTranslator({
+    type: "webhooks",
+    namespace: "WhitelistStatusChange",
+  });
+
+  const statuses = {
+    [WhitelistStatus.ACCEPTED]: { color: 0x00ff00, name: t("accepted") },
+    [WhitelistStatus.PENDING]: { color: 0xffa500, name: t("pending") },
+    [WhitelistStatus.DECLINED]: { color: 0xff0000, name: t("declined") },
+  } as const;
+
+  const status = statuses[user.whitelistStatus].name;
+  const color = statuses[user.whitelistStatus].color;
+
+  const description = t("userChangeDescription", {
+    status,
+    user: user.username,
+  });
+
+  const embeds: APIEmbed[] = [
+    {
+      description,
+      color,
+      title: t("userChangeTitle"),
+    },
+  ];
+
+  await sendDiscordWebhook({
+    data: { embeds },
+    type: DiscordWebhookType.USER_WHITELIST_STATUS,
+    extraMessageData: { userDiscordId: user.discordId },
+  });
+  await sendRawWebhook({
+    type: DiscordWebhookType.USER_WHITELIST_STATUS,
+    data: user,
+  });
 }

@@ -1,17 +1,16 @@
 import * as React from "react";
-import { Loader, Button, AsyncListSearchField, Item } from "@snailycad/ui";
+import { Loader, Button, AsyncListSearchField, Item, Infofield } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import { Table, useTableState } from "components/shared/Table";
 import { formatCitizenAddress } from "lib/utils";
 import type { PostLeoSearchBusinessData } from "@snailycad/types/api";
 import type { BaseCitizen } from "@snailycad/types";
-import { BusinessSearchResult, useBusinessSearch } from "state/search/business-search-state";
-import { Infofield } from "components/shared/Infofield";
+import { type BusinessSearchResult, useBusinessSearch } from "state/search/business-search-state";
 import dynamic from "next/dynamic";
 
 const BusinessSearchTabsContainer = dynamic(
@@ -20,26 +19,27 @@ const BusinessSearchTabsContainer = dynamic(
 );
 
 export function BusinessSearchModal() {
-  const { isOpen, closeModal, openModal, getPayload } = useModal();
-
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const { state, execute } = useFetch();
   const tableState = useTableState();
 
-  const payloadBusiness = getPayload<BusinessSearchResult | null>(ModalIds.BusinessSearch);
+  const payloadBusiness = modalState.getPayload<BusinessSearchResult | null>(
+    ModalIds.BusinessSearch,
+  );
   const { setCurrentResult, setResults, results, currentResult } = useBusinessSearch();
 
   React.useEffect(() => {
-    if (!isOpen(ModalIds.BusinessSearch)) {
+    if (!modalState.isOpen(ModalIds.BusinessSearch)) {
       setResults(null);
       setCurrentResult(null);
     }
-  }, [isOpen, setCurrentResult, setResults]);
+  }, [modalState, setCurrentResult, setResults]);
 
-  function handleOpenInNameSearch(citizen: BaseCitizen) {
-    closeModal(ModalIds.BusinessSearch);
-    openModal(ModalIds.NameSearch, {
+  function handleOpenInNameSearch(citizen: Pick<BaseCitizen, "surname" | "name" | "id">) {
+    modalState.closeModal(ModalIds.BusinessSearch);
+    modalState.openModal(ModalIds.NameSearch, {
       ...citizen,
       name: `${citizen.name} ${citizen.surname}`,
     });
@@ -81,26 +81,27 @@ export function BusinessSearchModal() {
   return (
     <Modal
       title={t("businessSearch")}
-      onClose={() => closeModal(ModalIds.BusinessSearch)}
-      isOpen={isOpen(ModalIds.BusinessSearch)}
+      onClose={() => modalState.closeModal(ModalIds.BusinessSearch)}
+      isOpen={modalState.isOpen(ModalIds.BusinessSearch)}
       className="w-[800px]"
     >
       <Formik initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ setValues, errors, values, isValid }) => (
+        {({ setValues, setFieldValue, errors, values, isValid }) => (
           <Form>
             <AsyncListSearchField<PostLeoSearchBusinessData[number]>
               allowsCustomValue
               autoFocus
-              setValues={({ localValue, node }) => {
-                const searchValue =
-                  typeof localValue !== "undefined" ? { searchValue: localValue } : {};
-                const name = node ? { name: node.key as string } : {};
-
+              onInputChange={(value) => setFieldValue("searchValue", value)}
+              onSelectionChange={(node) => {
                 if (node) {
                   setCurrentResult(node.value);
-                }
 
-                setValues({ ...values, ...searchValue, ...name });
+                  setValues({
+                    ...values,
+                    searchValue: node.value?.name ?? node.textValue,
+                    name: node.key as string,
+                  });
+                }
               }}
               localValue={values.searchValue}
               errorMessage={errors.name}
@@ -132,15 +133,18 @@ export function BusinessSearchModal() {
                   data={results.map((result) => ({
                     id: result.id,
                     name: result.name,
-                    owner: (
-                      <Button
-                        type="button"
-                        onPress={() => handleOpenInNameSearch(result.citizen)}
-                        size="xs"
-                      >
-                        {result.citizen.name} {result.citizen.surname}
-                      </Button>
-                    ),
+                    owners: result.employees
+                      .filter((v) => v.role?.as === "OWNER")
+                      .map((owner) => (
+                        <Button
+                          key={owner.id}
+                          type="button"
+                          onPress={() => handleOpenInNameSearch(owner.citizen)}
+                          size="xs"
+                        >
+                          {owner.citizen.name} {owner.citizen.surname}
+                        </Button>
+                      )),
                     fullAddress: formatCitizenAddress(result),
                     actions: (
                       <Button size="sm" type="button" onPress={() => setCurrentResult(result)}>
@@ -150,7 +154,7 @@ export function BusinessSearchModal() {
                   }))}
                   columns={[
                     { header: common("name"), accessorKey: "name" },
-                    { header: t("owner"), accessorKey: "owner" },
+                    { header: t("owners"), accessorKey: "owners" },
                     { header: t("fullAddress"), accessorKey: "fullAddress" },
                     { header: common("actions"), accessorKey: "actions" },
                   ]}
@@ -163,18 +167,23 @@ export function BusinessSearchModal() {
                 <h3 className="text-2xl font-semibold mb-3">{t("results")}</h3>
 
                 <Infofield label={common("name")}>{currentResult.name}</Infofield>
-                <Infofield label={t("owner")}>
-                  <Button
-                    size="xs"
-                    type="button"
-                    onPress={() => handleOpenInNameSearch(currentResult.citizen)}
-                  >
-                    {currentResult.citizen.name} {currentResult.citizen.surname}
-                  </Button>
+                <Infofield label={t("owners")}>
+                  {currentResult.employees
+                    .filter((v) => v.role?.as === "OWNER")
+                    .map((owner) => (
+                      <Button
+                        key={owner.id}
+                        size="xs"
+                        type="button"
+                        onPress={() => handleOpenInNameSearch(owner.citizen)}
+                      >
+                        {owner.citizen.name} {owner.citizen.surname}
+                      </Button>
+                    ))}
                 </Infofield>
                 <Infofield label={common("address")}>
                   {currentResult.address}{" "}
-                  {currentResult.citizen.postal ? `(${currentResult.citizen.postal})` : null}
+                  {currentResult.postal ? `(${currentResult.postal})` : null}
                 </Infofield>
 
                 <BusinessSearchTabsContainer />
@@ -184,7 +193,7 @@ export function BusinessSearchModal() {
             <footer className="flex justify-end mt-5">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.BusinessSearch)}
+                onPress={() => modalState.closeModal(ModalIds.BusinessSearch)}
                 variant="cancel"
               >
                 {common("cancel")}

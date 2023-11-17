@@ -1,13 +1,10 @@
-import { Loader, Button, TextField } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
+import { Loader, Button, TextField, SwitchField, FormRow } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
-import { Toggle } from "components/form/Toggle";
-import { FormRow } from "components/form/FormRow";
 import { handleValidate } from "lib/handleValidate";
 import { TONES_SCHEMA } from "@snailycad/schemas";
 import { toastMessage } from "lib/toastMessage";
@@ -15,7 +12,7 @@ import type { DeleteDispatchTonesData, PostDispatchTonesData } from "@snailycad/
 import { useGetActiveTone } from "hooks/global/use-tones";
 import { Table, useTableState } from "components/shared/Table";
 import { CallDescription } from "../active-calls/CallDescription";
-import { ActiveTone, ActiveToneType } from "@snailycad/types";
+import { type ActiveTone, ActiveToneType } from "@snailycad/types";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Props {
@@ -24,7 +21,7 @@ interface Props {
 
 export function TonesModal({ types }: Props) {
   const { state, execute } = useFetch();
-  const { closeModal, isOpen } = useModal();
+  const modalState = useModal();
 
   const { activeTones } = useGetActiveTone();
   const t = useTranslations("Leo");
@@ -49,7 +46,7 @@ export function TonesModal({ types }: Props) {
       });
 
       helpers.resetForm();
-      await queryClient.resetQueries(["active-tones"]);
+      await queryClient.resetQueries({ queryKey: ["active-tones"] });
     }
   }
 
@@ -60,7 +57,7 @@ export function TonesModal({ types }: Props) {
     });
 
     if (json) {
-      await queryClient.resetQueries(["active-tones"]);
+      await queryClient.resetQueries({ queryKey: ["active-tones"] });
       resetForm();
 
       toastMessage({
@@ -83,39 +80,43 @@ export function TonesModal({ types }: Props) {
 
   const validate = handleValidate(TONES_SCHEMA);
   const INITIAL_VALUES = {
-    emsFdTone: !!types.every((v) => v === ActiveToneType.EMS_FD),
-    leoTone: !!types.every((v) => v === ActiveToneType.LEO),
+    emsFdTone: Boolean(types.every((v) => v === ActiveToneType.EMS_FD)),
+    leoTone: Boolean(types.every((v) => v === ActiveToneType.LEO)),
     description: "",
     types,
   };
 
   return (
     <Modal
-      isOpen={isOpen(ModalIds.Tones)}
-      onClose={() => closeModal(ModalIds.Tones)}
+      isOpen={modalState.isOpen(ModalIds.Tones)}
+      onClose={() => modalState.closeModal(ModalIds.Tones)}
       title={t("tones")}
       className="w-[600px]"
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, setValues, resetForm, values, errors, isValid }) => (
+        {({ setFieldValue, setValues, resetForm, values, errors, isValid }) => (
           <Form>
             <p className="my-3 text-neutral-700 dark:text-gray-400">{t("notesInfo")}</p>
 
-            <FormRow>
+            <FormRow useFlex>
               {types.includes(ActiveToneType.EMS_FD) ? (
-                <FormField errorMessage={errors.emsFdTone} label={t("emsFdTone")}>
-                  <Toggle
-                    name="emsFdTone"
-                    onCheckedChange={handleChange}
-                    value={values.emsFdTone}
-                  />
-                </FormField>
+                <SwitchField
+                  className="mt-3 w-full"
+                  isSelected={values.emsFdTone}
+                  onChange={(isSelected) => setFieldValue("emsFdTone", isSelected)}
+                >
+                  {t("emsFdTone")}
+                </SwitchField>
               ) : null}
 
               {types.includes(ActiveToneType.LEO) ? (
-                <FormField errorMessage={errors.leoTone} label={t("leoTone")}>
-                  <Toggle name="leoTone" onCheckedChange={handleChange} value={values.leoTone} />
-                </FormField>
+                <SwitchField
+                  className="mt-3 w-full"
+                  isSelected={values.leoTone}
+                  onChange={(isSelected) => setFieldValue("leoTone", isSelected)}
+                >
+                  {t("leoTone")}
+                </SwitchField>
               ) : null}
             </FormRow>
 
@@ -176,7 +177,7 @@ export function TonesModal({ types }: Props) {
             <footer className="flex justify-end gap-2">
               <Button
                 variant="cancel"
-                onPress={() => closeModal(ModalIds.Tones)}
+                onPress={() => modalState.closeModal(ModalIds.Tones)}
                 className="flex items-center"
                 type="reset"
               >

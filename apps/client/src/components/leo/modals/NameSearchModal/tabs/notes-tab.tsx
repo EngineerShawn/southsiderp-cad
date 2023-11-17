@@ -1,22 +1,22 @@
 import * as React from "react";
 import type { Note } from "@snailycad/types";
-import { Button, TabsContent } from "@snailycad/ui";
-import { FullDate } from "components/shared/FullDate";
+import { Button, FullDate, TabsContent } from "@snailycad/ui";
 import { Table, useTableState } from "components/shared/Table";
 import { useTranslations } from "next-intl";
 import { useModal } from "state/modalState";
 import type { NameSearchResult } from "state/search/name-search-state";
 import type { VehicleSearchResult } from "state/search/vehicle-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { ManageNoteModal } from "../ManageNoteModal";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
 import type { DeleteNotesData } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 
 interface Props<T extends VehicleSearchResult | NameSearchResult> {
   currentResult: VehicleSearchResult | NameSearchResult;
-  setCurrentResult(value: T | null | undefined): void;
+  setCurrentResult(value: T | null | "initial"): void;
   type: "CITIZEN" | "VEHICLE";
 }
 
@@ -27,7 +27,7 @@ export function NotesTab<T extends VehicleSearchResult | NameSearchResult>({
 }: Props<T>) {
   const [open, setOpen] = React.useState(false);
   const t = useTranslations();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
 
   const tableState = useTableState();
@@ -49,25 +49,25 @@ export function NotesTab<T extends VehicleSearchResult | NameSearchResult>({
         notes: notes?.filter((v) => v.id !== tempNote.id),
       } as T);
       noteState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteNote);
+      modalState.closeModal(ModalIds.AlertDeleteNote);
     }
   }
 
   function handleEditClick(note: Note) {
     noteState.setTempId(note.id);
-    openModal(ModalIds.ManageNote);
+    modalState.openModal(ModalIds.ManageNote);
     setOpen(true);
   }
 
   function handleDeleteClick(note: Note) {
     noteState.setTempId(note.id);
-    openModal(ModalIds.AlertDeleteNote);
+    modalState.openModal(ModalIds.AlertDeleteNote);
     setOpen(true);
   }
 
   function handleAddClick() {
     setOpen(true);
-    openModal(ModalIds.ManageNote);
+    modalState.openModal(ModalIds.ManageNote);
   }
 
   const isConfidential = "isConfidential" in currentResult && currentResult.isConfidential;
@@ -95,7 +95,7 @@ export function NotesTab<T extends VehicleSearchResult | NameSearchResult>({
           features={{ isWithinCardOrModal: true }}
           data={notes.map((note) => ({
             id: note.id,
-            text: note.text,
+            text: <CallDescription data={{ description: note.text }} />,
             createdAt: <FullDate>{note.createdAt}</FullDate>,
             actions: (
               <>

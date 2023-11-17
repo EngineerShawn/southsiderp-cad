@@ -7,7 +7,7 @@ import { Button, buttonVariants, TabsContent } from "@snailycad/ui";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { AlertDeclineOfficerModal } from "../AlertDeclineOfficerModal";
 import Link from "next/link";
 import type {
@@ -40,14 +40,14 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
   });
 
   const { hasPermissions } = usePermission();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const common = useTranslations("Common");
   const { generateCallsign } = useGenerateCallsign();
   const { state, execute } = useFetch();
   const tableState = useTableState();
   const { DIVISIONS } = useFeatureEnabled();
-  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers], true);
+  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers]);
 
   async function handleAcceptOrDecline(data: {
     unit: Unit;
@@ -65,7 +65,7 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
     });
 
     if (json?.id) {
-      closeModal(ModalIds.AlertDeclineOfficer);
+      modalState.closeModal(ModalIds.AlertDeclineOfficer);
 
       if (json.deleted) {
         asyncTable.remove(unit.id);
@@ -87,6 +87,7 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
         <p className="mt-2">{t("Management.noPendingOfficers")}</p>
       ) : (
         <Table
+          isLoading={asyncTable.isInitialLoading}
           tableState={tableState}
           data={asyncTable.items.map((officer) => {
             const isPending = officer.whitelistStatus?.status === WhitelistStatus.PENDING;
@@ -95,15 +96,12 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
               id: officer.id,
               name: makeUnitName(officer),
               callsign: generateCallsign(officer),
-              badgeNumber: officer.badgeNumber,
+              badgeNumberString: officer.badgeNumberString,
               department: formatOfficerDepartment(officer) ?? common("none"),
               division: formatUnitDivisions(officer),
               user:
                 hasViewUsersPermissions && officer.user ? (
-                  <Link
-                    href={`/admin/manage/users/${officer.userId}`}
-                    className={`rounded-md transition-all p-1 px-1.5 ${buttonVariants.default}`}
-                  >
+                  <Link className={buttonVariants()} href={`/admin/manage/users/${officer.userId}`}>
                     {officer.user.username}
                   </Link>
                 ) : (
@@ -121,7 +119,7 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
                   </Button>
 
                   <Button
-                    onPress={() => openModal(ModalIds.AlertDeclineOfficer, officer)}
+                    onPress={() => modalState.openModal(ModalIds.AlertDeclineOfficer, officer)}
                     disabled={!isPending || state === "loading"}
                     className="ml-2"
                     size="xs"
@@ -136,7 +134,7 @@ export function DepartmentWhitelistingTab({ pendingUnits }: Props) {
           columns={[
             { header: common("name"), accessorKey: "name" },
             { header: t("Leo.callsign"), accessorKey: "callsign" },
-            { header: t("Leo.badgeNumber"), accessorKey: "badgeNumber" },
+            { header: t("Leo.badgeNumber"), accessorKey: "badgeNumberString" },
             { header: t("Leo.department"), accessorKey: "department" },
             DIVISIONS ? { header: t("Leo.division"), accessorKey: "division" } : null,
             { header: common("user"), accessorKey: "user" },

@@ -1,4 +1,9 @@
-import { EmsFdIncident, IncidentInvolvedUnit, LeoIncident, ShouldDoType } from "@prisma/client";
+import {
+  type EmsFdIncident,
+  type IncidentInvolvedUnit,
+  type LeoIncident,
+  ShouldDoType,
+} from "@prisma/client";
 import { findUnit } from "lib/leo/findUnit";
 import { prisma } from "lib/data/prisma";
 import type { Socket } from "services/socket-service";
@@ -18,7 +23,9 @@ export async function assignUnitsInvolvedToIncident(options: Options) {
     String(u.officerId ?? u.emsFdDeputyId ?? u.combinedLeoId),
   );
 
-  const disconnectConnectArr = manyToManyHelper(unitsInvolved, options.unitIds);
+  const disconnectConnectArr = manyToManyHelper(unitsInvolved, options.unitIds, {
+    showUpsert: false,
+  });
 
   await Promise.all(
     disconnectConnectArr.map(async (data) => {

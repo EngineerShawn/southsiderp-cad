@@ -1,12 +1,12 @@
 import * as React from "react";
 import { Input, Button } from "@snailycad/ui";
-import { FormikHelpers, useFormikContext } from "formik";
+import { type FormikHelpers, useFormikContext } from "formik";
 import { useTranslations } from "next-intl";
 import { FormField } from "../FormField";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { CropImageModal } from "components/modal/CropImageModal";
-import { AllowedFileExtension, allowedFileExtensions, IMAGES_REGEX } from "@snailycad/config";
+import { type AllowedFileExtension, allowedFileExtensions, IMAGES_REGEX } from "@snailycad/config";
 import Link from "next/link";
 import { BoxArrowUpRight } from "react-bootstrap-icons";
 import { useDebounce } from "react-use";
@@ -17,19 +17,27 @@ interface Props {
   label?: string;
   valueKey?: string;
   hideLabel?: boolean;
+  isOptional?: boolean;
 }
 
-export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, setImage }: Props) {
+export function ImageSelectInput({
+  label,
+  hideLabel,
+  valueKey = "image",
+  image,
+  setImage,
+  isOptional = true,
+}: Props) {
   const [useURL, setUseURL] = React.useState(false);
   const [urlImageData, setURLImageData] = React.useState<File | null>(null);
 
   const { errors, values, setFieldValue, handleChange } = useFormikContext<any>();
   const common = useTranslations("Common");
-  const { openModal, closeModal, isOpen } = useModal();
+  const modalState = useModal();
 
   function onCropSuccess(url: Blob, filename: string) {
     setImage(new File([url], filename, { type: url.type }));
-    closeModal(ModalIds.CropImageModal);
+    modalState.closeModal(ModalIds.CropImageModal);
   }
 
   function handleSetURL(v: boolean) {
@@ -58,7 +66,7 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
 
   return useURL ? (
     <FormField
-      optional
+      optional={isOptional}
       errorMessage={errors[valueKey] as string}
       label={hideLabel ? null : label ?? common("image")}
     >
@@ -72,6 +80,7 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
           name={valueKey}
           type="url"
           value={values[valueKey]}
+          errorMessage={errors[valueKey] as string}
         />
 
         <Button
@@ -79,7 +88,7 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
           disabled={!urlImageData}
           type="button"
           onPress={() => {
-            openModal(ModalIds.CropImageModal);
+            modalState.openModal(ModalIds.CropImageModal);
           }}
         >
           {common("crop")}
@@ -99,8 +108,8 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
       </Link>
 
       <CropImageModal
-        isOpen={isOpen(ModalIds.CropImageModal)}
-        onClose={() => closeModal(ModalIds.CropImageModal)}
+        isOpen={modalState.isOpen(ModalIds.CropImageModal)}
+        onClose={() => modalState.closeModal(ModalIds.CropImageModal)}
         image={urlImageData}
         onSuccess={onCropSuccess}
       />
@@ -108,12 +117,13 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
   ) : (
     <>
       <FormField
-        optional
+        optional={isOptional}
         errorMessage={errors[valueKey] as string}
         label={hideLabel ? null : label ?? common("image")}
       >
         <div className="flex">
           <Input
+            errorMessage={errors[valueKey] as string}
             style={{ width: "95%", marginRight: "0.5em" }}
             onChange={(e) => {
               handleChange(e);
@@ -127,7 +137,7 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
             className="mr-2 min-w-fit"
             type="button"
             onPress={() => {
-              openModal(ModalIds.CropImageModal);
+              modalState.openModal(ModalIds.CropImageModal);
             }}
           >
             {common("crop")}
@@ -160,8 +170,8 @@ export function ImageSelectInput({ label, hideLabel, valueKey = "image", image, 
 
       {typeof image !== "string" ? (
         <CropImageModal
-          isOpen={isOpen(ModalIds.CropImageModal)}
-          onClose={() => closeModal(ModalIds.CropImageModal)}
+          isOpen={modalState.isOpen(ModalIds.CropImageModal)}
+          onClose={() => modalState.closeModal(ModalIds.CropImageModal)}
           image={image}
           onSuccess={onCropSuccess}
         />

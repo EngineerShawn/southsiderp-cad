@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 
-let currentVersionCached: string;
+let currentVersionCached: string | undefined;
 let currentCommitHash: string;
 let latestReleaseVersion: string | null;
 
@@ -36,10 +36,6 @@ async function getLocalPackageVersion(): Promise<string | null> {
 
 function getCurrentGitHash() {
   try {
-    if (process.env.RAILWAY_GIT_COMMIT_SHA) {
-      return process.env.RAILWAY_GIT_COMMIT_SHA as string;
-    }
-
     const command = "git";
 
     const outputBuffer = spawnSync(command, ["rev-parse", "--short=7", "HEAD"]);

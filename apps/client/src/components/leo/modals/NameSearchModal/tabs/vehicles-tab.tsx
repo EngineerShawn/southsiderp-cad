@@ -1,28 +1,26 @@
-import { FullDate } from "components/shared/FullDate";
 import { Table, useTableState } from "components/shared/Table";
-import { Status } from "components/shared/Status";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { useTranslations } from "use-intl";
-import { Button, TabsContent } from "@snailycad/ui";
-import { useVehicleSearch, VehicleSearchResult } from "state/search/vehicle-search-state";
+import { Button, FullDate, Status, TabsContent } from "@snailycad/ui";
+import { useVehicleSearch, type VehicleSearchResult } from "state/search/vehicle-search-state";
 import { useModal } from "state/modalState";
 import { useNameSearch } from "state/search/name-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 
 export function NameSearchVehiclesTab() {
   const t = useTranslations();
   const common = useTranslations("Common");
   const { DMV } = useFeatureEnabled();
   const currentResult = useNameSearch((state) => state.currentResult);
-  const { openModal } = useModal();
-  const { setCurrentResult: setVehicleResult } = useVehicleSearch();
+  const modalState = useModal();
+  const setVehicleResult = useVehicleSearch((state) => state.setCurrentResult);
   const tableState = useTableState();
 
   function handlePlateClick(vehicle: VehicleSearchResult) {
     if (!currentResult || currentResult.isConfidential) return;
 
     setVehicleResult({ ...vehicle, citizen: currentResult });
-    openModal(ModalIds.VehicleSearchWithinName);
+    modalState.openModal(ModalIds.VehicleSearchWithinName);
   }
 
   if (!currentResult || currentResult.isConfidential) {

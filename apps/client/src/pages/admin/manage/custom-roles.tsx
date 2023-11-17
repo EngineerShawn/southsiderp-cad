@@ -3,19 +3,18 @@ import * as React from "react";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
-import { type CustomRole, Rank } from "@snailycad/types";
+import { type CustomRole } from "@snailycad/types";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
 import { Permissions } from "@snailycad/permissions";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate } from "@snailycad/ui";
 import { useModal } from "state/modalState";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
 import { usePermission } from "hooks/usePermission";
-import { FullDate } from "components/shared/FullDate";
 import type { DeleteCustomRoleByIdData, GetCustomRolesData } from "@snailycad/types/api";
 import dynamic from "next/dynamic";
 import { CallDescription } from "components/dispatch/active-calls/CallDescription";
@@ -36,10 +35,10 @@ interface Props {
 export default function ManageCustomRoles({ customRoles: data }: Props) {
   const { state, execute } = useFetch();
   const { hasPermissions } = usePermission();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Management");
   const common = useTranslations("Common");
-  const hasManagePermissions = hasPermissions([Permissions.ManageCustomRoles], true);
+  const hasManagePermissions = hasPermissions([Permissions.ManageCustomRoles]);
 
   const [search, setSearch] = React.useState("");
 
@@ -71,24 +70,23 @@ export default function ManageCustomRoles({ customRoles: data }: Props) {
     if (typeof json === "boolean" && json) {
       asyncTable.remove(tempRole.id);
       tempRoleState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteCustomRole);
+      modalState.closeModal(ModalIds.AlertDeleteCustomRole);
     }
   }
 
   function handleEditClick(field: CustomRole) {
     tempRoleState.setTempId(field.id);
-    openModal(ModalIds.ManageCustomRole);
+    modalState.openModal(ModalIds.ManageCustomRole);
   }
 
   function handleDeleteClick(field: CustomRole) {
     tempRoleState.setTempId(field.id);
-    openModal(ModalIds.AlertDeleteCustomRole);
+    modalState.openModal(ModalIds.AlertDeleteCustomRole);
   }
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ManageCustomRoles, Permissions.ViewCustomRoles],
       }}
     >
@@ -103,7 +101,7 @@ export default function ManageCustomRoles({ customRoles: data }: Props) {
 
         <div>
           {hasManagePermissions ? (
-            <Button onPress={() => openModal(ModalIds.ManageCustomRole)}>
+            <Button onPress={() => modalState.openModal(ModalIds.ManageCustomRole)}>
               {t("createCustomRole")}
             </Button>
           ) : null}
@@ -191,7 +189,10 @@ export const getServerSideProps: GetServerSideProps = async ({ locale, req }) =>
       customRoles,
       session: user,
       messages: {
-        ...(await getTranslations(["admin", "values", "common"], user?.locale ?? locale)),
+        ...(await getTranslations(
+          ["admin", "cad-settings", "values", "common"],
+          user?.locale ?? locale,
+        )),
       },
     },
   };

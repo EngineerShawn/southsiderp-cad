@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getSynthesisVoices } from "components/account/AppearanceTab";
+import { getSynthesisVoices } from "components/account/appearance-tab";
 import { useAuth } from "context/AuthContext";
 
 interface SpeechAlertProps {
@@ -43,5 +43,5 @@ export function SpeechAlert(props: SpeechAlertProps) {
     speaked.current = true;
   }, [props]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return props.children as JSX.Element;
+  return props.children as React.JSX.Element;
 }

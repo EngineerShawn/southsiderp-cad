@@ -6,30 +6,39 @@ import type {
   PlayerLeftEvent,
   MapPlayer,
   PlayerDataEventPayload,
-} from "types/Map";
-import { useAuth } from "context/AuthContext";
+} from "types/map";
 import useFetch from "lib/useFetch";
 import { toastMessage } from "lib/toastMessage";
-import type { cad } from "@snailycad/types";
-import type { GetDispatchPlayerBySteamIdData } from "@snailycad/types/api";
-import { io, Socket } from "socket.io-client";
-import { create } from "zustand";
+import { useDispatchMapState, useSocketStore } from "state/mapState";
+import { ModalIds } from "types/modal-ids";
+import { useModal } from "state/modalState";
+import { makeSocketConnection } from "components/dispatch/map/modals/select-map-server-modal";
+import { ConnectionStatus } from "@snailycad/ui";
+import { createWithEqualityFn } from "zustand/traditional";
+import { shallow } from "zustand/shallow";
 
-export const useMapPlayersStore = create<{
+export const useMapPlayersStore = createWithEqualityFn<{
   players: Map<string, MapPlayer | PlayerDataEventPayload>;
   setPlayers(players: Map<string, MapPlayer | PlayerDataEventPayload>): void;
-}>((set) => ({
-  players: new Map<string, MapPlayer | PlayerDataEventPayload>(),
-  setPlayers: (players: Map<string, MapPlayer | PlayerDataEventPayload>) => set({ players }),
-}));
+}>(
+  (set) => ({
+    players: new Map<string, MapPlayer | PlayerDataEventPayload>(),
+    setPlayers: (players: Map<string, MapPlayer | PlayerDataEventPayload>) => set({ players }),
+  }),
+  shallow,
+);
 
 export function useMapPlayers() {
   const { players, setPlayers } = useMapPlayersStore();
-  const [socket, setSocket] = React.useState<Socket | null>(null);
 
-  const { cad } = useAuth();
-  const url = getCADURL(cad);
+  const currentMapServerURL = useDispatchMapState((state) => state.currentMapServerURL);
+  const modalState = useModal();
   const { state, execute } = useFetch();
+  const { socket, setStatus, setSocket } = useSocketStore((state) => ({
+    socket: state.socket,
+    setStatus: state.setStatus,
+    setSocket: state.setSocket,
+  }));
 
   const getCADUsers = React.useCallback(
     async (options: {
@@ -48,7 +57,7 @@ export function useMapPlayers() {
         }));
 
       if (options.fetchMore) {
-        const { json: rawJson } = await execute<GetDispatchPlayerBySteamIdData[]>({
+        const { json: rawJson } = await execute({
           path: "/dispatch/players",
           data: filteredPlayers,
           noToast: true,
@@ -69,7 +78,7 @@ export function useMapPlayers() {
         }
       }
 
-      setPlayers(newPlayers);
+      setPlayers(options.map);
     },
     [state], // eslint-disable-line
   );
@@ -144,11 +153,12 @@ export function useMapPlayers() {
   const onError = React.useCallback(
     (reason: Error) => {
       console.log({ reason });
+      setStatus(ConnectionStatus.DISCONNECTED);
 
       toastMessage({
         message: (
           <>
-            Unable to make a Websocket connection to {url}.{" "}
+            Unable to make a Websocket connection to {currentMapServerURL}.{" "}
             <a
               target="_blank"
               rel="noreferrer"
@@ -163,87 +173,50 @@ export function useMapPlayers() {
         duration: 10_000,
       });
     },
-    [url],
+    [currentMapServerURL], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  React.useEffect(() => {
-    if (!socket && url) {
-      const newSocket = makeSocketConnection(url);
+  const onConnect = React.useCallback(() => {
+    setStatus(ConnectionStatus.CONNECTED);
+    toastMessage({
+      icon: "success",
+      message: "Successfully connected to the server",
+      title: "Connection Success",
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  React.useEffect(() => {
+    if (!currentMapServerURL) {
+      modalState.openModal(ModalIds.SelectMapServer, { showAlert: true });
+    } else if (!modalState.isOpen(ModalIds.SelectMapServer) && !socket?.connected) {
+      socket?.close();
+
+      const newSocket = makeSocketConnection(currentMapServerURL);
       if (newSocket) {
         setSocket(newSocket);
       }
     }
-  }, [url, socket]);
+  }, [currentMapServerURL, socket?.connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     const s = socket;
+
     if (s) {
       s.onAny(onMessage);
       s.on("disconnect", console.log);
       s.once("connect_error", onError);
+      s.on("connect", onConnect);
     }
 
     return () => {
       s?.offAny(onMessage);
       s?.off("disconnect", console.log);
       s?.off("connect_error", onError);
+      s?.off("connect", onConnect);
     };
-  }, [socket, onError, onMessage]);
+  }, [socket, onError, onMessage, onConnect]);
 
   return {
     players,
   };
-}
-
-let warned = false;
-function getCADURL(cad: cad | null) {
-  if (!cad) return null;
-
-  const liveMapURL = cad.miscCadSettings?.liveMapURL;
-
-  if (!liveMapURL) {
-    !warned &&
-      toastMessage({
-        duration: Infinity,
-        // eslint-disable-next-line quotes
-        message: 'There was no "Live Map URL" provided from the CAD-Settings.',
-      });
-    warned = true;
-    return null;
-  }
-
-  return liveMapURL;
-}
-
-function makeSocketConnection(url: string) {
-  try {
-    if (url.startsWith("ws")) {
-      const _url = url.replace(/ws:\/\//, "http://").replace(/wss:\/\//, "https://");
-      return io(_url);
-    }
-
-    return io(url);
-  } catch (error) {
-    const isSecurityError = error instanceof Error && error.name === "SecurityError";
-
-    console.log({ error });
-
-    if (isSecurityError) {
-      toastMessage({
-        message: `Unable to make a Websocket connection to ${url}. The connections are not secure.`,
-        title: "Security Error",
-        duration: Infinity,
-      });
-      return;
-    }
-
-    toastMessage({
-      message: `Unable to make a Websocket connection to ${url}`,
-      title: "Connection Error",
-      duration: Infinity,
-    });
-
-    return null;
-  }
 }

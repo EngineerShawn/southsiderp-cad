@@ -7,8 +7,8 @@ import { useModal } from "state/modalState";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
-import { ModalIds } from "types/ModalIds";
-import { Officer, ValueType } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
+import { type Officer, ValueType } from "@snailycad/types";
 import useFetch from "lib/useFetch";
 import { formatOfficerDepartment, formatUnitDivisions, makeUnitName, requestAll } from "lib/utils";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
@@ -40,7 +40,7 @@ export default function MyOfficers({ officers: data }: Props) {
 
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
   const { generateCallsign } = useGenerateCallsign();
   const { makeImageUrl } = useImageUrl();
@@ -59,7 +59,7 @@ export default function MyOfficers({ officers: data }: Props) {
     });
 
     if (json) {
-      closeModal(ModalIds.AlertDeleteOfficer);
+      modalState.closeModal(ModalIds.AlertDeleteOfficer);
       setOfficers((p) => p.filter((v) => v.id !== tempOfficer.id));
       officerState.setTempId(null);
     }
@@ -67,23 +67,22 @@ export default function MyOfficers({ officers: data }: Props) {
 
   function handleEditClick(officer: Officer) {
     officerState.setTempId(officer.id);
-    openModal(ModalIds.ManageOfficer);
+    modalState.openModal(ModalIds.ManageOfficer);
   }
 
   function handleDeleteClick(officer: Officer) {
     officerState.setTempId(officer.id);
-    openModal(ModalIds.AlertDeleteOfficer);
+    modalState.openModal(ModalIds.AlertDeleteOfficer);
   }
 
   return (
-    <Layout
-      permissions={{ fallback: (u) => u.isLeo, permissions: [Permissions.Leo] }}
-      className="dark:text-white"
-    >
+    <Layout permissions={{ permissions: [Permissions.Leo] }} className="dark:text-white">
       <header className="flex items-center justify-between">
         <Title className="!mb-0">{t("myOfficers")}</Title>
 
-        <Button onPress={() => openModal(ModalIds.ManageOfficer)}>{t("createOfficer")}</Button>
+        <Button onPress={() => modalState.openModal(ModalIds.ManageOfficer)}>
+          {t("createOfficer")}
+        </Button>
       </header>
 
       {officers.length <= 0 ? (
@@ -112,7 +111,7 @@ export default function MyOfficers({ officers: data }: Props) {
                 </span>
               ),
               callsign: generateCallsign(officer),
-              badgeNumber: officer.badgeNumber,
+              badgeNumberString: officer.badgeNumberString,
               department: formatOfficerDepartment(officer) ?? common("none"),
               departmentStatus: <UnitDepartmentStatus unit={officer} />,
               division: formatUnitDivisions(officer),
@@ -138,7 +137,7 @@ export default function MyOfficers({ officers: data }: Props) {
           columns={[
             { header: t("officer"), accessorKey: "officer" },
             { header: t("callsign"), accessorKey: "callsign" },
-            BADGE_NUMBERS ? { header: t("badgeNumber"), accessorKey: "badgeNumber" } : null,
+            BADGE_NUMBERS ? { header: t("badgeNumber"), accessorKey: "badgeNumberString" } : null,
             { header: t("department"), accessorKey: "department" },
             DIVISIONS ? { header: t("division"), accessorKey: "division" } : null,
             { header: t("rank"), accessorKey: "rank" },

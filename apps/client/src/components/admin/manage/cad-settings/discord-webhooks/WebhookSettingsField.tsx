@@ -4,11 +4,13 @@ import { Textarea, TextField } from "@snailycad/ui";
 import { FormField } from "components/form/FormField";
 import { useFormikContext } from "formik";
 import type { GetCADDiscordWebhooksData } from "@snailycad/types/api";
+import { useTranslations } from "use-intl";
+import { type DiscordWebhookType } from "@snailycad/types";
 
 interface FieldProps {
   description?: string;
   label: string;
-  fieldName: string;
+  fieldName: DiscordWebhookType | (string & {});
   channels?: GetCADDiscordWebhooksData;
   isRawWebhook?: boolean;
   disabled?: boolean;
@@ -23,6 +25,7 @@ export function WebhookSettingsField({
   disabled,
 }: FieldProps) {
   const { errors, values, setFieldValue, handleChange } = useFormikContext<any>();
+  const t = useTranslations("DiscordWebhooksTab");
 
   return (
     <SettingsFormField
@@ -51,7 +54,7 @@ export function WebhookSettingsField({
             onChange={handleChange}
           />
 
-          <FormField optional className="mt-2" label="Extra message">
+          <FormField optional className="mt-2" label={t("extraMessage")}>
             <Textarea
               disabled={disabled}
               value={values[fieldName]?.extraMessage}

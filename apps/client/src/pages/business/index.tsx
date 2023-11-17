@@ -7,8 +7,8 @@ import { Layout } from "components/Layout";
 import { Button } from "@snailycad/ui";
 import { useTranslations } from "use-intl";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
-import { BusinessCard } from "components/business/BusinessCard";
+import { ModalIds } from "types/modal-ids";
+import { BusinessCard } from "components/business/business-card";
 import dynamic from "next/dynamic";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
@@ -16,24 +16,19 @@ import { usePermission, Permissions } from "hooks/usePermission";
 import type { GetBusinessesData } from "@snailycad/types/api";
 
 const CreateBusinessModal = dynamic(
-  async () => (await import("components/business/CreateBusinessModal")).CreateBusinessModal,
+  async () => (await import("components/business/create-business-modal")).CreateBusinessModal,
 );
 
 const JoinBusinessModal = dynamic(
-  async () => (await import("components/business/JoinBusinessModal")).JoinBusinessModal,
+  async () => (await import("components/business/join-business-modal")).JoinBusinessModal,
 );
 
 export default function BusinessPage(props: GetBusinessesData) {
-  const { openModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Business");
-  const [businesses, setBusinesses] = React.useState(props.businesses);
   const setJoinableBusinesses = useBusinessState((s) => s.setJoinableBusinesses);
-
   const { hasPermissions } = usePermission();
-  const hasCreateBusinessesPerms = hasPermissions([Permissions.CreateBusinesses], true);
-
-  const ownedBusinesses = businesses.filter((em) => em.citizenId === em.business.citizenId);
-  const joinedBusinesses = businesses.filter((em) => em.citizenId !== em.business.citizenId);
+  const hasCreateBusinessesPerms = hasPermissions([Permissions.CreateBusinesses]);
 
   React.useEffect(() => {
     setJoinableBusinesses(props.joinableBusinesses);
@@ -45,9 +40,11 @@ export default function BusinessPage(props: GetBusinessesData) {
         <Title className="!mb-0">{t("businesses")}</Title>
 
         <div>
-          <Button onPress={() => openModal(ModalIds.JoinBusiness)}>{t("joinBusiness")}</Button>
+          <Button onPress={() => modalState.openModal(ModalIds.JoinBusiness)}>
+            {t("joinBusiness")}
+          </Button>
           {hasCreateBusinessesPerms ? (
-            <Button className="ml-2" onPress={() => openModal(ModalIds.CreateBusiness)}>
+            <Button className="ml-2" onPress={() => modalState.openModal(ModalIds.CreateBusiness)}>
               {t("createBusiness")}
             </Button>
           ) : null}
@@ -57,10 +54,10 @@ export default function BusinessPage(props: GetBusinessesData) {
       <section>
         <h3 className="text-xl font-semibold mb-2">{t("owned")}</h3>
         <ul className="space-y-3">
-          {ownedBusinesses.length <= 0 ? (
-            <p>{t("noOwned")}</p>
+          {props.ownedBusinesses.length <= 0 ? (
+            <p className="text-neutral-700 dark:text-gray-400">{t("noOwned")}</p>
           ) : (
-            ownedBusinesses.map((employee) => (
+            props.ownedBusinesses.map((employee) => (
               <BusinessCard key={employee.id} employee={employee} />
             ))
           )}
@@ -70,34 +67,34 @@ export default function BusinessPage(props: GetBusinessesData) {
       <section className="mt-3">
         <h3 className="text-xl font-semibold mb-2">{t("joined")}</h3>
         <ul className="space-y-3">
-          {joinedBusinesses.length <= 0 ? (
-            <p>{t("notEmployee")}</p>
+          {props.joinedBusinesses.length <= 0 ? (
+            <p className="text-neutral-700 dark:text-gray-400">{t("notEmployee")}</p>
           ) : (
-            joinedBusinesses.map((employee) => (
+            props.joinedBusinesses.map((employee) => (
               <BusinessCard key={employee.id} employee={employee} />
             ))
           )}
         </ul>
       </section>
 
-      <JoinBusinessModal onCreate={(bus) => setBusinesses((p) => [...p, bus])} />
-      {hasCreateBusinessesPerms ? (
-        <CreateBusinessModal onCreate={(employee) => setBusinesses((p) => [...p, employee])} />
-      ) : null}
+      <JoinBusinessModal />
+      {hasCreateBusinessesPerms ? <CreateBusinessModal /> : null}
     </Layout>
   );
 }
 
-export const getServerSideProps: GetServerSideProps = async ({ locale, req }) => {
+export const getServerSideProps: GetServerSideProps<GetBusinessesData> = async ({
+  locale,
+  req,
+}) => {
   const user = await getSessionUser(req);
   const [data] = await requestAll(req, [
-    ["/businesses", { businesses: [], joinableBusinesses: [] }],
+    ["/businesses", { ownedBusinesses: [], joinedBusinesses: [], joinableBusinesses: [] }],
   ]);
 
   return {
     props: {
-      businesses: data.businesses,
-      joinableBusinesses: data.joinableBusinesses,
+      ...data,
       session: user,
       messages: {
         ...(await getTranslations(["business", "common"], user?.locale ?? locale)),

@@ -5,27 +5,28 @@ import {
   CREATE_CITIZEN_SCHEMA,
   IMPOUND_VEHICLE_SCHEMA,
   LEO_VEHICLE_SCHEMA,
+  LICENSE_POINTS_SCHEMA,
 } from "@snailycad/schemas";
 import { BodyParams, PathParams } from "@tsed/platform-params";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { citizenInclude } from "controllers/citizen/CitizenController";
-import { updateCitizenLicenseCategories } from "lib/citizen/licenses";
+import { updateCitizenLicenseCategories } from "lib/citizen/licenses/update-citizen-license-categories";
 import {
-  cad,
+  type cad,
   Feature,
-  MiscCadSettings,
+  type MiscCadSettings,
   ValueType,
-  VehicleInspectionStatus,
-  VehicleTaxStatus,
+  type VehicleInspectionStatus,
+  type VehicleTaxStatus,
   WhitelistStatus,
-  User,
+  type User,
   CustomFieldCategory,
-  SuspendedCitizenLicenses,
+  type SuspendedCitizenLicenses,
   DiscordWebhookType,
-  Officer,
-  CombinedLeoUnit,
+  type Officer,
+  type CombinedLeoUnit,
 } from "@prisma/client";
 import { UseBeforeEach, Context, UseBefore } from "@tsed/common";
 import { ContentType, Description, Post, Put } from "@tsed/schema";
@@ -33,20 +34,22 @@ import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { validateSchema } from "lib/data/validate-schema";
 import { manyToManyHelper } from "lib/data/many-to-many";
 import { validateCustomFields } from "lib/validate-custom-fields";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import {
   appendCustomFields,
   citizenSearchIncludeOrSelect,
   vehicleSearchInclude,
 } from "./SearchController";
-import { citizenObjectFromData } from "lib/citizen";
+import { citizenObjectFromData } from "lib/citizen/citizen-create-data-obj";
 import { generateString } from "utils/generate-string";
 import type * as APITypes from "@snailycad/types/api";
-import { createVehicleImpoundedWebhookData } from "controllers/calls/TowController";
+import { createVehicleImpoundedWebhookData } from "controllers/calls/tow-controller";
 import { sendDiscordWebhook, sendRawWebhook } from "lib/discord/webhooks";
-import { getFirstOfficerFromActiveOfficer } from "lib/leo/utils";
+import { getUserOfficerFromActiveOfficer } from "lib/leo/utils";
 import { ActiveOfficer } from "middlewares/active-officer";
+import { IsFeatureEnabled } from "~/middlewares/is-enabled";
+import { validateSocialSecurityNumber } from "~/lib/citizen/validate-ssn";
 
 @Controller("/search/actions")
 @UseBeforeEach(IsAuth)
@@ -55,7 +58,6 @@ export class SearchActionsController {
   @Put("/licenses/:citizenId")
   @Description("Update the licenses for a citizen by their id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateCitizenLicenses(
@@ -89,6 +91,10 @@ export class SearchActionsController {
         pilotLicenseTimeEnd: data.suspended.pilotLicenseTimeEnd,
         waterLicense: data.suspended.waterLicense,
         waterLicenseTimeEnd: data.suspended.waterLicenseTimeEnd,
+        fishingLicense: data.suspended.fishingLicense,
+        fishingLicenseTimeEnd: data.suspended.fishingLicenseTimeEnd,
+        huntingLicense: data.suspended.huntingLicense,
+        huntingLicenseTimeEnd: data.suspended.huntingLicenseTimeEnd,
       };
 
       suspendedLicenses = await prisma.suspendedCitizenLicenses.upsert({
@@ -106,8 +112,51 @@ export class SearchActionsController {
         driversLicenseId: data.driversLicense,
         pilotLicenseId: data.pilotLicense,
         weaponLicenseId: data.weaponLicense,
+        huntingLicenseId: data.huntingLicense,
+        fishingLicenseId: data.fishingLicense,
         waterLicenseId: data.waterLicense,
         suspendedLicensesId: suspendedLicenses?.id,
+      },
+      include: citizenInclude,
+    });
+
+    return updated;
+  }
+
+  @Put("/license-points/:citizenId")
+  @Description("Update the license points for a citizen by their id")
+  @UsePermissions({
+    permissions: [Permissions.Leo],
+  })
+  async updateCitizenLicensePoints(
+    @BodyParams() body: unknown,
+    @PathParams("citizenId") citizenId: string,
+  ): Promise<APITypes.PutSearchActionsLicensePointsData> {
+    const data = validateSchema(LICENSE_POINTS_SCHEMA, body);
+
+    const citizen = await prisma.citizen.findUnique({
+      where: {
+        id: citizenId,
+      },
+    });
+
+    if (!citizen) {
+      throw new NotFound("notFound");
+    }
+
+    const createUpdateData = {
+      driverLicensePoints: data.driverLicensePoints,
+      pilotLicensePoints: data.pilotLicensePoints,
+      waterLicensePoints: data.waterLicensePoints,
+      firearmsLicensePoints: data.firearmsLicensePoints,
+      huntingLicensePoints: data.huntingLicensePoints,
+      fishingLicensePoints: data.fishingLicensePoints,
+    };
+
+    const updated = await prisma.citizen.update({
+      where: { id: citizen.id },
+      data: {
+        licensePoints: { upsert: { create: createUpdateData, update: createUpdateData } },
       },
       include: citizenInclude,
     });
@@ -118,7 +167,6 @@ export class SearchActionsController {
   @Put("/vehicle-licenses/:vehicleId")
   @Description("Update the licenses of a vehicle by its id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateVehicleLicenses(
@@ -156,7 +204,6 @@ export class SearchActionsController {
   @Put("/vehicle-flags/:vehicleId")
   @Description("Update the vehicle flags by its id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateVehicleFlags(
@@ -175,6 +222,7 @@ export class SearchActionsController {
     const disconnectConnectArr = manyToManyHelper(
       vehicle.flags.map((v) => v.id),
       flags,
+      { showUpsert: false },
     );
 
     await prisma.$transaction(
@@ -194,7 +242,6 @@ export class SearchActionsController {
   @Put("/citizen-flags/:citizenId")
   @Description("Update the citizens flags by their id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateCitizenFlags(
@@ -213,6 +260,7 @@ export class SearchActionsController {
     const disconnectConnectArr = manyToManyHelper(
       citizen.flags.map((v) => v.id),
       flags,
+      { showUpsert: false },
     );
 
     await prisma.$transaction(
@@ -232,7 +280,6 @@ export class SearchActionsController {
   @Put("/citizen-address-flags/:citizenId")
   @Description("Update the citizen's address flags by their id")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async updateCitizenAddressFlags(
@@ -251,6 +298,7 @@ export class SearchActionsController {
     const disconnectConnectArr = manyToManyHelper(
       citizen.addressFlags.map((v) => v.id),
       addressFlags,
+      { showUpsert: false },
     );
 
     await prisma.$transaction(
@@ -269,8 +317,7 @@ export class SearchActionsController {
 
   @Put("/custom-fields/citizen/:citizenId")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
-    permissions: [Permissions.Leo],
+    permissions: [Permissions.LeoManageCustomFields],
   })
   async updateCitizenCustomFields(
     @BodyParams("fields") fields: unknown,
@@ -300,8 +347,7 @@ export class SearchActionsController {
 
   @Put("/custom-fields/vehicle/:vehicleId")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
-    permissions: [Permissions.Leo],
+    permissions: [Permissions.LeoManageCustomFields],
   })
   async updateVehicleCustomFields(
     @BodyParams("fields") fields: unknown,
@@ -331,8 +377,7 @@ export class SearchActionsController {
 
   @Put("/custom-fields/weapon/:weaponId")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
-    permissions: [Permissions.Leo],
+    permissions: [Permissions.LeoManageCustomFields],
   })
   async updateWeaponCustomFields(
     @BodyParams("fields") fields: unknown,
@@ -362,7 +407,6 @@ export class SearchActionsController {
 
   @Post("/citizen")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async createCitizen(
@@ -426,6 +470,74 @@ export class SearchActionsController {
     return citizen as APITypes.PostSearchActionsCreateCitizen;
   }
 
+  @Put("/citizen/:id")
+  @UsePermissions({
+    permissions: [Permissions.LeoManageCitizenProfile],
+  })
+  @IsFeatureEnabled({ feature: Feature.LEO_EDITABLE_CITIZEN_PROFILE })
+  async updateCitizenById(
+    @Context("cad")
+    cad: cad & { features?: Record<Feature, boolean>; miscCadSettings: MiscCadSettings | null },
+    @Context("user") user: User,
+    @BodyParams() body: unknown,
+    @PathParams("id") citizenId: string,
+  ): Promise<APITypes.PostSearchActionsCreateCitizen> {
+    const data = validateSchema(CREATE_CITIZEN_SCHEMA, body);
+
+    const citizen = await prisma.citizen.findUnique({
+      where: {
+        id: citizenId,
+      },
+    });
+
+    if (!citizen) {
+      throw new NotFound("citizenNotFound");
+    }
+
+    const date = data.dateOfBirth ? new Date(data.dateOfBirth).getTime() : undefined;
+    if (date) {
+      const now = Date.now();
+
+      if (date > now) {
+        throw new ExtendedBadRequest({ dateOfBirth: "dateLargerThanNow" });
+      }
+    }
+
+    const isEditableSSNEnabled = isFeatureEnabled({
+      features: cad.features,
+      feature: Feature.EDITABLE_SSN,
+      defaultReturn: true,
+    });
+
+    if (data.socialSecurityNumber && isEditableSSNEnabled) {
+      await validateSocialSecurityNumber({
+        socialSecurityNumber: data.socialSecurityNumber,
+        citizenId: citizen.id,
+      });
+    }
+
+    const updated = await prisma.citizen.update({
+      where: {
+        id: citizen.id,
+      },
+      data: {
+        ...(await citizenObjectFromData({
+          data,
+          cad,
+        })),
+        socialSecurityNumber:
+          data.socialSecurityNumber && isEditableSSNEnabled
+            ? data.socialSecurityNumber
+            : !citizen.socialSecurityNumber
+            ? generateString(9, { type: "numbers-only" })
+            : undefined,
+      },
+      ...citizenSearchIncludeOrSelect(user, cad),
+    });
+
+    return updated as APITypes.PostSearchActionsCreateCitizen;
+  }
+
   @UseBefore(ActiveOfficer)
   @Post("/impound/:vehicleId")
   @Description("Impound a vehicle from plate search")
@@ -436,7 +548,11 @@ export class SearchActionsController {
     @Context("user") user: User,
   ): Promise<APITypes.PostSearchActionsCreateVehicle> {
     const data = validateSchema(IMPOUND_VEHICLE_SCHEMA, body);
-    const officer = getFirstOfficerFromActiveOfficer({ allowDispatch: true, activeOfficer });
+    const officer = getUserOfficerFromActiveOfficer({
+      userId: user.id,
+      allowDispatch: true,
+      activeOfficer,
+    });
 
     const vehicle = await prisma.registeredVehicle.findUnique({
       where: { id: vehicleId },
@@ -455,6 +571,7 @@ export class SearchActionsController {
         valueId: data.impoundLot,
         registeredVehicleId: vehicle.id,
         officerId: officer?.id ?? null,
+        descriptionData: data.descriptionData,
       },
     });
 
@@ -564,7 +681,6 @@ export class SearchActionsController {
 
   @Post("/missing/:citizenId")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd || u.isLeo || u.isDispatch,
     permissions: [Permissions.EmsFd, Permissions.Leo, Permissions.Dispatch],
   })
   async declareCitizenMissing(
@@ -586,6 +702,44 @@ export class SearchActionsController {
         missing: !citizen.missing,
         dateOfMissing: citizen.missing ? null : new Date(),
       },
+    });
+
+    return updated;
+  }
+
+  @Put("/weapon-flags/:weaponId")
+  @Description("Update the weapon's flags by their id")
+  @UsePermissions({
+    permissions: [Permissions.Leo],
+  })
+  async updateWeaponFlags(
+    @BodyParams("flags") flags: string[],
+    @PathParams("weaponId") weaponId: string,
+  ): Promise<APITypes.PutSearchActionsWeaponFlagsData> {
+    const weapon = await prisma.weapon.findUnique({
+      where: { id: weaponId },
+      select: { id: true, flags: true },
+    });
+
+    if (!weapon) {
+      throw new NotFound("notFound");
+    }
+
+    const disconnectConnectArr = manyToManyHelper(
+      weapon.flags.map((v) => v.id),
+      flags,
+      { showUpsert: false },
+    );
+
+    await prisma.$transaction(
+      disconnectConnectArr.map((v) =>
+        prisma.weapon.update({ where: { id: weapon.id }, data: { flags: v } }),
+      ),
+    );
+
+    const updated = await prisma.weapon.findUniqueOrThrow({
+      where: { id: weapon.id },
+      select: { id: true, flags: true },
     });
 
     return updated;

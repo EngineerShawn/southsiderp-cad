@@ -1,7 +1,7 @@
 import { ContentType, Delete, Get, Post, Put } from "@tsed/schema";
 import { BodyParams, PathParams, QueryParams, UseBeforeEach } from "@tsed/common";
 import { Controller } from "@tsed/di";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
 import { COURT_ENTRY_SCHEMA } from "@snailycad/schemas";
@@ -18,7 +18,6 @@ import { IsFeatureEnabled } from "middlewares/is-enabled";
 export class CourtEntryController {
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async getCourtEntries(
@@ -40,7 +39,6 @@ export class CourtEntryController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async createCourtEntry(@BodyParams() body: unknown): Promise<APITypes.PostCourtEntriesData> {
@@ -71,7 +69,6 @@ export class CourtEntryController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateCourtEntry(
@@ -119,7 +116,6 @@ export class CourtEntryController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async deleteCourtEntry(@PathParams("id") id: string): Promise<APITypes.DeleteCourtEntriesData> {

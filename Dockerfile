@@ -1,34 +1,37 @@
-#build
-FROM node:18 as build
+FROM node:18 as base
 
-ARG BUILD_CONTEXT
+RUN npm install -g pnpm
 
-WORKDIR /app
+RUN pnpm config set httpTimeout 1200000
 
-ENV NODE_ENV "production"
+WORKDIR /snailycad
 
-ENV BUILD_CONTEXT ${BUILD_CONTEXT}
+COPY . ./
 
-COPY package.json .
+FROM base as deps
 
-COPY yarn.lock .
+RUN pnpm install
 
-COPY ./apps/$BUILD_CONTEXT/package.json apps/$BUILD_CONTEXT/
+FROM deps as api
 
-COPY ./packages /app/packages
-COPY ./scripts /app/scripts
-COPY . /app/
+ENV NODE_ENV="production"
 
-WORKDIR /app
+RUN pnpm turbo run build --filter=@snailycad/api
 
-RUN yarn set version stable
+WORKDIR /snailycad/apps/api
 
-RUN yarn install
+CMD ["pnpm", "start"]
 
-RUN yarn cache clean
+FROM deps as client
 
-COPY ./apps/$BUILD_CONTEXT apps/$BUILD_CONTEXT
+ENV NODE_ENV="production"
 
-RUN yarn run turbo build
+RUN rm -rf /snailycad/apps/client/.next
 
-CMD yarn workspace @snailycad/$BUILD_CONTEXT start
+RUN pnpm create-images-domain
+
+RUN pnpm turbo run build --filter=@snailycad/client
+
+WORKDIR /snailycad/apps/client
+
+CMD ["pnpm", "start"]

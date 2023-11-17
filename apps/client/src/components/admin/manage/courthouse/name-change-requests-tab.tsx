@@ -1,17 +1,15 @@
-import { TabsContent } from "@radix-ui/react-tabs";
 import { WhitelistStatus } from "@snailycad/types";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { useTranslations } from "next-intl";
-import { Button } from "@snailycad/ui";
-import { FullDate } from "components/shared/FullDate";
-import { Status } from "components/shared/Status";
+import { Button, FullDate, Status, TabsContent } from "@snailycad/ui";
 import useFetch from "lib/useFetch";
 import type {
   GetManageNameChangeRequests,
   PutManageNameChangeRequests,
 } from "@snailycad/types/api";
 import { useInvalidateQuery } from "hooks/use-invalidate-query";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 
 interface Props {
   requests: GetManageNameChangeRequests;
@@ -23,7 +21,7 @@ export function NameChangeRequestsTab({ requests: data }: Props) {
   const tableState = useTableState();
   const { state, execute } = useFetch();
   const { hasPermissions } = usePermission();
-  const hasManagePermissions = hasPermissions([Permissions.ManageNameChangeRequests], true);
+  const hasManagePermissions = hasPermissions([Permissions.ManageNameChangeRequests]);
   const { invalidateQuery } = useInvalidateQuery(["admin", "notifications"]);
 
   const asyncTable = useAsyncTable({
@@ -52,7 +50,12 @@ export function NameChangeRequestsTab({ requests: data }: Props) {
   }
 
   return (
-    <TabsContent value="name-change-requests">
+    <TabsContent
+      tabName={`${t("Management.MANAGE_NAME_CHANGE_REQUESTS")} ${
+        asyncTable.isInitialLoading ? "" : ` (${asyncTable.pagination.totalDataCount})`
+      }`}
+      value="name-change-requests"
+    >
       <h3 className="font-semibold text-xl">{t("Management.MANAGE_NAME_CHANGE_REQUESTS")}</h3>
 
       {asyncTable.noItemsAvailable ? (
@@ -64,6 +67,7 @@ export function NameChangeRequestsTab({ requests: data }: Props) {
             id: request.id,
             citizen: `${request.citizen.name} ${request.citizen.surname}`,
             newName: `${request.newName} ${request.newSurname}`,
+            description: <CallDescription data={{ description: request.description }} />,
             status: <Status>{request.status}</Status>,
             createdAt: <FullDate>{request.createdAt}</FullDate>,
             actions: (
@@ -90,6 +94,7 @@ export function NameChangeRequestsTab({ requests: data }: Props) {
           }))}
           columns={[
             { header: common("citizen"), accessorKey: "citizen" },
+            { header: common("description"), accessorKey: "description" },
             { header: t("Courthouse.newName"), accessorKey: "newName" },
             { header: t("Courthouse.status"), accessorKey: "status" },
             { header: common("createdAt"), accessorKey: "createdAt" },

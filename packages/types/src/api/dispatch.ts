@@ -1,4 +1,4 @@
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "../prisma/index";
 import type * as Types from "../index.js";
 
 /** calls */
@@ -96,7 +96,6 @@ export interface GetDispatchData {
         user: Pick<Types.User, "id" | "username">;
       })
     | null;
-  activeIncidents: Types.LeoIncident[];
 }
 
 /**
@@ -169,25 +168,6 @@ export type PostDispatchStatusMergeDeputies = Types.CombinedEmsFdUnit;
  * @route /dispatch/status/unmerge/:id
  */
 export type PostDispatchStatusUnmergeUnitById = boolean;
-
-/**
- * @method GET
- * @route /dispatch/players/:steamId
- */
-export type GetDispatchPlayerBySteamIdData = Pick<
-  Types.User,
-  | "username"
-  | "id"
-  | "isEmsFd"
-  | "isLeo"
-  | "isDispatch"
-  | "permissions"
-  | "rank"
-  | "steamId"
-  | "discordId"
-> & {
-  unit: Types.Officer | Types.CombinedLeoUnit | Types.EmsFdDeputy | null;
-};
 
 export type PostDispatchUnitsSearchData = (
   | Types.Officer

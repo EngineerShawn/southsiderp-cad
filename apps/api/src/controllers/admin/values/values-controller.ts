@@ -6,7 +6,7 @@ import {
   BodyParams,
   QueryParams,
   MultipartFile,
-  PlatformMulterFile,
+  type PlatformMulterFile,
   Context,
 } from "@tsed/common";
 import fs from "node:fs/promises";
@@ -14,13 +14,17 @@ import { ContentType, Delete, Description, Patch, Post, Put } from "@tsed/schema
 import { prisma } from "lib/data/prisma";
 import { IsValidPath, validValuePaths } from "middlewares/valid-path";
 import { BadRequest, NotFound } from "@tsed/exceptions";
-import { IsAuth } from "middlewares/is-auth";
-import { typeHandlers } from "./Import";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { typeHandlers } from "./import-values-controller";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
-import { ValuesSelect, getTypeFromPath, getPermissionsForValuesRequest } from "lib/values/utils";
+import {
+  type ValuesSelect,
+  getTypeFromPath,
+  getPermissionsForValuesRequest,
+} from "lib/values/utils";
 import { ValueType } from "@prisma/client";
 import { UsePermissions } from "middlewares/use-permissions";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
 import type * as APITypes from "@snailycad/types/api";
 import { getImageWebPPath } from "lib/images/get-image-webp-path";
 import { BULK_DELETE_SCHEMA } from "@snailycad/schemas";
@@ -28,6 +32,7 @@ import { validateSchema } from "lib/data/validate-schema";
 import { createSearchWhereObject } from "lib/values/create-where-object";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
 import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
+import { getPrismaModelOrderBy } from "~/utils/order-by";
 
 export const GET_VALUES: Partial<Record<ValueType, ValuesSelect>> = {
   QUALIFICATION: {
@@ -39,7 +44,7 @@ export const GET_VALUES: Partial<Record<ValueType, ValuesSelect>> = {
   BUSINESS_ROLE: { name: "employeeValue" },
   CODES_10: { name: "statusValue", include: { departments: { include: { value: true } } } },
   DRIVERSLICENSE_CATEGORY: { name: "driversLicenseCategoryValue" },
-  DEPARTMENT: { name: "departmentValue", include: { defaultOfficerRank: true } },
+  DEPARTMENT: { name: "departmentValue", include: { defaultOfficerRank: true, links: true } },
   DIVISION: {
     name: "divisionValue",
     include: { department: { include: { value: true } } },
@@ -63,12 +68,14 @@ export class ValuesController {
   @Get("/")
   @Description("Get all the values by the specified types")
   async getValueByPath(
-    @PathParams("path") path: (string & {}) | "all",
+    @PathParams({ expression: "path", paramType: "string", useType: String })
+    path: ValueType | "all",
     @QueryParams() queryParams: any,
-    @QueryParams("paths") rawPaths: string,
+    @QueryParams("paths") rawPaths: ValueType,
     @QueryParams("skip", Number) skip = 0,
     @QueryParams("query", String) query = "",
     @QueryParams("includeAll", Boolean) includeAll = true,
+    @QueryParams("sorting") sorting: string = "",
   ): Promise<APITypes.GetValuesData | APITypes.GetValuesPenalCodesData> {
     // allow more paths in one request
     let paths =
@@ -77,6 +84,8 @@ export class ValuesController {
     if (path === "all") {
       paths = validValuePaths.filter((v) => v !== "penal_code_group");
     }
+
+    const orderBy = getPrismaModelOrderBy(sorting);
 
     const values = await Promise.all(
       paths.map(async (path) => {
@@ -100,7 +109,7 @@ export class ValuesController {
         if (data) {
           const [totalCount, values] = await prisma.$transaction([
             // @ts-expect-error ignore
-            prisma[data.name].count({ orderBy: { value: { position: "asc" } }, where }),
+            prisma[data.name].count({ where }),
             // @ts-expect-error ignore
             prisma[data.name].findMany({
               where,
@@ -109,7 +118,7 @@ export class ValuesController {
                 ...(type === "ADDRESS" ? {} : { _count: true }),
                 value: true,
               },
-              orderBy: { value: { position: "asc" } },
+              orderBy: sorting ? orderBy : { value: { position: "asc" } },
               take: includeAll ? undefined : 35,
               skip: includeAll ? undefined : skip,
             }),
@@ -126,13 +135,13 @@ export class ValuesController {
           const [totalCount, penalCodes] = await prisma.$transaction([
             prisma.penalCode.count({
               where,
-              orderBy: { title: "asc" },
+              orderBy: sorting ? orderBy : { title: "asc" },
             }),
             prisma.penalCode.findMany({
               take: includeAll ? undefined : 35,
               skip: includeAll ? undefined : skip,
               where,
-              orderBy: { title: "asc" },
+              orderBy: sorting ? orderBy : { title: "asc" },
               include: {
                 warningApplicable: true,
                 warningNotApplicable: true,
@@ -154,7 +163,7 @@ export class ValuesController {
             where,
             take: includeAll ? undefined : 35,
             skip: includeAll ? undefined : skip,
-            orderBy: { position: "asc" },
+            orderBy: sorting ? orderBy : { position: "asc" },
             include: {
               _count: true,
               ...(type === ValueType.OFFICER_RANK
@@ -247,6 +256,12 @@ export class ValuesController {
       where: { type, isDisabled: false, value: { contains: query, mode: "insensitive" } },
       orderBy: { position: "asc" },
       take: 35,
+      include:
+        type === ValueType.OFFICER_RANK
+          ? {
+              officerRankDepartments: { include: { value: true } },
+            }
+          : undefined,
     });
 
     return values;
@@ -258,23 +273,38 @@ export class ValuesController {
     @PathParams("id") id: string,
     @MultipartFile("image") file?: PlatformMulterFile,
   ) {
-    try {
-      const type = getTypeFromPath(_path);
-      const supportedValueTypes = [ValueType.QUALIFICATION, ValueType.OFFICER_RANK] as string[];
+    const type = getTypeFromPath(_path);
+    const supportedValueTypes = [
+      ValueType.VEHICLE,
+      ValueType.QUALIFICATION,
+      ValueType.OFFICER_RANK,
+    ] as string[];
 
-      if (!supportedValueTypes.includes(type)) {
-        return new BadRequest("invalidType");
+    if (!supportedValueTypes.includes(type)) {
+      return new BadRequest("invalidType");
+    }
+
+    if (!file) {
+      throw new ExtendedBadRequest({ file: "No file provided." });
+    }
+
+    if (!allowedFileExtensions.includes(file.mimetype as AllowedFileExtension)) {
+      throw new ExtendedBadRequest({ image: "invalidImageType" });
+    }
+
+    switch (type) {
+      case ValueType.VEHICLE: {
+        const value = await prisma.vehicleValue.findUnique({
+          where: { id },
+        });
+
+        if (!value) {
+          throw new NotFound("valueNotFound");
+        }
+
+        break;
       }
-
-      if (!file) {
-        throw new ExtendedBadRequest({ file: "No file provided." });
-      }
-
-      if (!allowedFileExtensions.includes(file.mimetype as AllowedFileExtension)) {
-        throw new ExtendedBadRequest({ image: "invalidImageType" });
-      }
-
-      if (type === ValueType.QUALIFICATION) {
+      case ValueType.QUALIFICATION: {
         const value = await prisma.qualificationValue.findUnique({
           where: { id },
         });
@@ -282,7 +312,10 @@ export class ValuesController {
         if (!value) {
           throw new NotFound("valueNotFound");
         }
-      } else if (type === ValueType.OFFICER_RANK) {
+
+        break;
+      }
+      case ValueType.OFFICER_RANK: {
         const value = await prisma.value.findFirst({
           where: { id, type: ValueType.OFFICER_RANK },
         });
@@ -290,8 +323,15 @@ export class ValuesController {
         if (!value) {
           throw new NotFound("valueNotFound");
         }
-      }
 
+        break;
+      }
+      default: {
+        throw new ExtendedBadRequest({ type: "invalidType" });
+      }
+    }
+
+    try {
       const image = await getImageWebPPath({
         buffer: file.buffer,
         pathType: "values",
@@ -302,23 +342,38 @@ export class ValuesController {
 
       await fs.writeFile(image.path, image.buffer);
 
-      let data;
+      switch (type) {
+        case ValueType.VEHICLE: {
+          const data = await prisma.vehicleValue.update({
+            where: { id },
+            data: { imageId: image.fileName },
+            select: { imageId: true },
+          });
 
-      if (type === ValueType.QUALIFICATION) {
-        data = await prisma.qualificationValue.update({
-          where: { id },
-          data: { imageId: image.fileName, imageBlurData: blurData },
-          select: { imageId: true },
-        });
-      } else if (type === ValueType.OFFICER_RANK) {
-        data = await prisma.value.update({
-          where: { id },
-          data: { officerRankImageId: image.fileName, officerRankImageBlurData: blurData },
-          select: { officerRankImageId: true },
-        });
+          return data;
+        }
+        case ValueType.QUALIFICATION: {
+          const data = await prisma.qualificationValue.update({
+            where: { id },
+            data: { imageId: image.fileName, imageBlurData: blurData },
+            select: { imageId: true },
+          });
+
+          return data;
+        }
+        case ValueType.OFFICER_RANK: {
+          const data = await prisma.value.update({
+            where: { id },
+            data: { officerRankImageId: image.fileName, officerRankImageBlurData: blurData },
+            select: { officerRankImageId: true },
+          });
+
+          return data;
+        }
+        default: {
+          throw new ExtendedBadRequest({ type: "invalidType" });
+        }
       }
-
-      return data;
     } catch {
       throw new BadRequest("errorUploadingImage");
     }
@@ -382,15 +437,21 @@ export class ValuesController {
           await prisma[data.name].findMany({ select: { id: true } })
         : await prisma.value.findMany({ where: { type }, select: { id: true } });
 
-      arr = await Promise.all(values.map(async (item) => this.deleteById(type, item.id)));
+      arr = await Promise.allSettled(values.map((item) => this.deleteById(type, item.id)));
     } else {
-      arr = await Promise.all(data.map(async (id) => this.deleteById(type, id)));
+      arr = await Promise.allSettled(data.map((id) => this.deleteById(type, id)));
     }
 
-    const successfullyDeleted = arr.filter((v) => v !== false) as string[];
+    const successfullyDeleted = arr
+      .filter((v) => Boolean(v.status === "fulfilled" && v.value !== false))
+      // @ts-expect-error we know that all of these are fulfilled
+      .map((v) => v.value);
+
     const successfullyDeletedCount = successfullyDeleted.length;
 
-    const failedToDeleteCount = arr.filter((v) => v === false).length;
+    const failedToDeleteCount = arr.filter(
+      (v) => (v.status === "fulfilled" && v.value === false) || v.status === "rejected",
+    ).length;
 
     await createAuditLogEntry({
       translationKey: "bulkRemoveValues",
@@ -411,7 +472,7 @@ export class ValuesController {
     @Context("sessionUserId") sessionUserId: string,
   ): Promise<APITypes.DeleteValueByIdData> {
     const type = getTypeFromPath(path);
-    return !!this.deleteById(type, id, sessionUserId);
+    return Boolean(this.deleteById(type, id, sessionUserId));
   }
 
   @Patch("/:id")
@@ -494,8 +555,18 @@ export class ValuesController {
         return id;
       }
 
-      if (type === "PENAL_CODE") {
-        await prisma.penalCode.delete({ where: { id } });
+      if (type === ValueType.PENAL_CODE) {
+        const value = await prisma.penalCode.delete({ where: { id } });
+
+        if (sessionUserId) {
+          await createAuditLogEntry({
+            translationKey: "deletedEntry",
+            action: { type: AuditLogActionType.ValueAdd, new: value },
+            prisma,
+            executorId: sessionUserId,
+          });
+        }
+
         return id;
       }
 

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Rank, ValueType } from "@snailycad/types";
+import { ValueType } from "@snailycad/types";
 import { getSelectedTableRows, Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
@@ -9,14 +9,13 @@ import { SearchArea } from "components/shared/search/search-area";
 import { Title } from "components/shared/Title";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { Permissions } from "@snailycad/permissions";
-import { Button, buttonSizes, buttonVariants } from "@snailycad/ui";
+import { Button, buttonVariants } from "@snailycad/ui";
 import { useTranslations } from "use-intl";
 import dynamic from "next/dynamic";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import Link from "next/link";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { useModal } from "state/modalState";
-import { classNames } from "lib/classNames";
 import type {
   DeleteValueByIdData,
   DeleteValuesBulkData,
@@ -47,7 +46,7 @@ export default function PenalCodeGroupsPage(props: Props) {
   const t = useTranslations("PENAL_CODE");
   const valuesT = useTranslations("Values");
   const common = useTranslations("Common");
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { execute, state } = useFetch();
   const router = useRouter();
   const groupId = router.query.groupId as string;
@@ -75,12 +74,12 @@ export default function PenalCodeGroupsPage(props: Props) {
 
   function handleDeleteClick(penalCodeId: string) {
     penalCodeState.setTempId(penalCodeId);
-    openModal(ModalIds.AlertDeleteValue);
+    modalState.openModal(ModalIds.AlertDeleteValue);
   }
 
   function handleEditClick(penalCodeId: string) {
     penalCodeState.setTempId(penalCodeId);
-    openModal(ModalIds.ManageValue);
+    modalState.openModal(ModalIds.ManageValue);
   }
 
   async function handleDeleteSelected() {
@@ -96,7 +95,7 @@ export default function PenalCodeGroupsPage(props: Props) {
       asyncTable.remove(...selectedRows);
 
       tableState.setRowSelection({});
-      closeModal(ModalIds.AlertDeleteSelectedValues);
+      modalState.closeModal(ModalIds.AlertDeleteSelectedValues);
 
       toastMessage({
         title: "Delete Values",
@@ -127,12 +126,12 @@ export default function PenalCodeGroupsPage(props: Props) {
       });
 
       penalCodeState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteValue);
+      modalState.closeModal(ModalIds.AlertDeleteValue);
     } else {
       if (json) {
         asyncTable.remove(tempPenalCode.id);
         penalCodeState.setTempId(null);
-        closeModal(ModalIds.AlertDeleteValue);
+        modalState.closeModal(ModalIds.AlertDeleteValue);
       }
     }
   }
@@ -140,7 +139,6 @@ export default function PenalCodeGroupsPage(props: Props) {
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ManageValuePenalCode],
       }}
     >
@@ -159,22 +157,21 @@ export default function PenalCodeGroupsPage(props: Props) {
 
         <div className="flex gap-2">
           {isEmpty(tableState.rowSelection) ? null : (
-            <Button onPress={() => openModal(ModalIds.AlertDeleteSelectedValues)} variant="danger">
+            <Button
+              onPress={() => modalState.openModal(ModalIds.AlertDeleteSelectedValues)}
+              variant="danger"
+            >
               {valuesT("deleteSelectedValues")}
             </Button>
           )}
           <Link
             href="/admin/values/penal-code"
-            className={classNames(
-              "flex items-center gap-3 rounded-md",
-              buttonSizes.sm,
-              buttonVariants.default,
-            )}
+            className={buttonVariants({ className: "flex items-center gap-3" })}
           >
             <ArrowLeft /> View all groups
           </Link>
 
-          <Button onPress={() => openModal(ModalIds.ManageValue)}>{t("ADD")}</Button>
+          <Button onPress={() => modalState.openModal(ModalIds.ManageValue)}>{t("ADD")}</Button>
         </div>
       </header>
 

@@ -2,7 +2,7 @@ import { useTranslations } from "use-intl";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
-import { Rank, WhitelistStatus } from "@snailycad/types";
+import { WhitelistStatus } from "@snailycad/types";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
@@ -10,7 +10,7 @@ import { Permissions, usePermission } from "hooks/usePermission";
 import { AllUsersTab } from "components/admin/manage/users/tabs/all-users-tab";
 import type { GetManageUsersData } from "@snailycad/types/api";
 import { TabList, Button } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import dynamic from "next/dynamic";
 
@@ -26,13 +26,14 @@ interface Props {
 export default function ManageUsers({ data }: Props) {
   const t = useTranslations("Management");
   const pending = data.users.filter((v) => v.whitelistStatus === WhitelistStatus.PENDING);
-  const { openModal } = useModal();
+  const modalState = useModal();
   const { hasPermissions } = usePermission();
 
-  const hasManagePermissions = hasPermissions(
-    [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
-    true,
-  );
+  const hasManagePermissions = hasPermissions([
+    Permissions.ManageUsers,
+    Permissions.BanUsers,
+    Permissions.DeleteUsers,
+  ]);
 
   const tabs = [
     { name: `${t("allUsers")} (${data.totalCount})`, value: "allUsers" },
@@ -42,7 +43,6 @@ export default function ManageUsers({ data }: Props) {
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [
           Permissions.BanUsers,
           Permissions.ViewUsers,
@@ -56,7 +56,9 @@ export default function ManageUsers({ data }: Props) {
 
         {hasManagePermissions ? (
           <div>
-            <Button onClick={() => openModal(ModalIds.PruneUsers)}>Prune Users</Button>
+            <Button onPress={() => modalState.openModal(ModalIds.PruneUsers)}>
+              {t("pruneUsers")}
+            </Button>
           </div>
         ) : null}
       </header>

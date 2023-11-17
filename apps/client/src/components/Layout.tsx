@@ -1,10 +1,10 @@
 import * as React from "react";
-import type { Permissions, PermissionsFallback } from "hooks/usePermission";
+import type { Permissions } from "hooks/usePermission";
 import { useRoleplayStopped } from "hooks/global/useRoleplayStopped";
-import { Nav } from "./nav/Nav";
+import { Nav } from "./shared/nav/Nav";
 import { useHasPermissionForLayout } from "hooks/auth/useHasPermissionForLayout";
 import { useSocketError } from "hooks/global/useSocketError";
-import { useSocket } from "@casper124578/use-socket.io";
+import { useSocket } from "@casperiv/use-socket.io";
 
 import dynamic from "next/dynamic";
 
@@ -15,7 +15,7 @@ const SocketErrorComponent = dynamic(
 
 export interface LayoutProps {
   children: React.ReactNode;
-  permissions?: { fallback?: PermissionsFallback; permissions: Permissions[] };
+  permissions?: { permissions: Permissions[] };
   className?: string;
   hideAlerts?: boolean;
   navMaxWidth?: string;

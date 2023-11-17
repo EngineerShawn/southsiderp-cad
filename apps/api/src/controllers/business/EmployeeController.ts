@@ -2,11 +2,11 @@ import { Controller } from "@tsed/di";
 import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { ContentType, Delete, Hidden, Put } from "@tsed/schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UPDATE_EMPLOYEE_SCHEMA, FIRE_EMPLOYEE_SCHEMA } from "@snailycad/schemas";
 import { NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { cad, EmployeeAsEnum, User, WhitelistStatus } from "@prisma/client";
+import { type cad, EmployeeAsEnum, type User, WhitelistStatus } from "@prisma/client";
 import { validateBusinessAcceptance } from "utils/businesses";
 import { validateSchema } from "lib/data/validate-schema";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
@@ -31,7 +31,8 @@ export class BusinessEmployeeController {
 
     await validateBusinessAcceptance(cad, businessId);
 
-    const employee = await prisma.employee.findFirst({
+    /** the employee who wants to manage another employee */
+    const managingEmployee = await prisma.employee.findFirst({
       where: {
         id: data.employeeId,
         businessId,
@@ -42,7 +43,10 @@ export class BusinessEmployeeController {
       },
     });
 
-    if (!employee || employee.role?.as === "EMPLOYEE") {
+    const isOwner = managingEmployee?.role?.as === EmployeeAsEnum.OWNER;
+    const canManageEmployees = isOwner ? true : managingEmployee?.canManageEmployees;
+
+    if (!canManageEmployees) {
       throw new NotFound("employeeNotFoundOrInvalidPermissions");
     }
 
@@ -80,6 +84,8 @@ export class BusinessEmployeeController {
       data: {
         employeeOfTheMonth: data.employeeOfTheMonth,
         canCreatePosts: data.canCreatePosts,
+        canManageEmployees: data.canManageEmployees,
+        canManageVehicles: data.canManageVehicles,
         roleId: data.roleId,
       },
       include: {
@@ -108,7 +114,7 @@ export class BusinessEmployeeController {
 
     await validateBusinessAcceptance(cad, businessId);
 
-    const employee = await prisma.employee.findFirst({
+    const managingEmployee = await prisma.employee.findFirst({
       where: {
         id: data.employeeId,
         businessId,
@@ -119,7 +125,10 @@ export class BusinessEmployeeController {
       },
     });
 
-    if (!employee || employee.role?.as === "EMPLOYEE") {
+    const isOwner = managingEmployee?.role?.as === EmployeeAsEnum.OWNER;
+    const canManageEmployees = isOwner ? true : managingEmployee?.canManageEmployees;
+
+    if (!canManageEmployees) {
       throw new NotFound("employeeNotFoundOrInvalidPermissions");
     }
 
@@ -162,7 +171,7 @@ export class BusinessEmployeeController {
 
     await validateBusinessAcceptance(cad, businessId);
 
-    const employee = await prisma.employee.findFirst({
+    const managingEmployee = await prisma.employee.findFirst({
       where: {
         id: data.employeeId,
         businessId,
@@ -173,7 +182,10 @@ export class BusinessEmployeeController {
       },
     });
 
-    if (!employee || employee.role?.as === "EMPLOYEE") {
+    const isOwner = managingEmployee?.role?.as === EmployeeAsEnum.OWNER;
+    const canManageEmployees = isOwner ? true : managingEmployee?.canManageEmployees;
+
+    if (!canManageEmployees) {
       throw new NotFound("employeeNotFoundOrInvalidPermissions");
     }
 

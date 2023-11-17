@@ -5,8 +5,8 @@
 
 import {
   ApplicationRoleConnectionMetadataType,
-  RESTPutAPIApplicationRoleConnectionMetadataJSONBody,
-  RESTPutAPIApplicationRoleConnectionMetadataResult,
+  type RESTPutAPIApplicationRoleConnectionMetadataJSONBody,
+  type RESTPutAPIApplicationRoleConnectionMetadataResult,
   Routes,
 } from "discord-api-types/v10";
 import { performDiscordRequest } from "lib/discord/performDiscordRequest";
@@ -27,12 +27,12 @@ export async function registerDiscordRolesMetadata() {
       },
     ];
 
-    const response = (await performDiscordRequest({
-      handler: (rest) =>
-        rest.put(Routes.applicationRoleConnectionMetadata(DISCORD_CLIENT_ID), {
-          body,
-        }),
-    })) as RESTPutAPIApplicationRoleConnectionMetadataResult;
+    const response = await performDiscordRequest<RESTPutAPIApplicationRoleConnectionMetadataResult>(
+      {
+        handler: (rest) =>
+          rest.put(Routes.applicationRoleConnectionMetadata(DISCORD_CLIENT_ID), { body }),
+      },
+    );
 
     console.log({ response });
   } catch {

@@ -6,37 +6,35 @@ import { UPDATE_USER_SCHEMA } from "@snailycad/schemas";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
-import { Rank } from "@snailycad/types";
+import { Rank, WhitelistStatus } from "@snailycad/types";
 import { AdminLayout } from "components/admin/AdminLayout";
-import { useAuth } from "context/AuthContext";
 import {
   Loader,
   Button,
   buttonVariants,
-  SelectField,
   TextField,
   Breadcrumbs,
   BreadcrumbItem,
+  Alert,
+  FormRow,
 } from "@snailycad/ui";
 import useFetch from "lib/useFetch";
-import { FormRow } from "components/form/FormRow";
 import { handleValidate } from "lib/handleValidate";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { usePermission, Permissions } from "hooks/usePermission";
 import dynamic from "next/dynamic";
 import { SettingsFormField } from "components/form/SettingsFormField";
-import { AlertModal } from "components/modal/AlertModal";
 import { ApiTokenArea } from "components/admin/manage/users/api-token-area";
-import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { classNames } from "lib/classNames";
 import type {
   GetCustomRolesData,
   GetManageUserByIdData,
+  PostManageUserAcceptDeclineData,
   PutManageUserByIdData,
 } from "@snailycad/types/api";
+import { useAuth } from "context/AuthContext";
 
 const DangerZone = dynamic(
   async () => (await import("components/admin/manage/users/danger-zone")).DangerZone,
@@ -61,18 +59,28 @@ const ManagePermissionsModal = dynamic(
 
 interface Props {
   roles: GetCustomRolesData;
-  user: GetManageUserByIdData;
+  user: GetManageUserByIdData | null;
 }
 
 export default function ManageCitizens(props: Props) {
-  const [user, setUser] = React.useState(props.user);
+  const [user, setUser] = React.useState(props.user!);
   const { state, execute } = useFetch();
   const common = useTranslations("Common");
   const t = useTranslations("Management");
-  const { user: session } = useAuth();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { hasPermissions } = usePermission();
-  const { USER_API_TOKENS } = useFeatureEnabled();
+  const { cad } = useAuth();
+
+  async function handleAcceptUser() {
+    const { json } = await execute<PostManageUserAcceptDeclineData>({
+      path: `/admin/manage/users/pending/${user.id}/accept`,
+      method: "POST",
+    });
+
+    if (json) {
+      setUser({ ...user, whitelistStatus: WhitelistStatus.ACCEPTED });
+    }
+  }
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
     const { json } = await execute<PutManageUserByIdData>({
@@ -86,27 +94,41 @@ export default function ManageCitizens(props: Props) {
     }
   }
 
+  if (!props.user) {
+    return (
+      <AdminLayout
+        permissions={{
+          permissions: [Permissions.BanUsers, Permissions.ManageUsers, Permissions.DeleteUsers],
+        }}
+      >
+        <Title renderLayoutTitle={false} className="mb-2">
+          {t("userNotFoundTitle")}
+        </Title>
+
+        <Alert
+          type="error"
+          className="my-5"
+          message={t("userNotFoundError")}
+          title={t("userNotFoundTitle")}
+        />
+      </AdminLayout>
+    );
+  }
+
   const INITIAL_VALUES = {
     username: user.username,
-    rank: user.rank,
-    isDispatch: user.isDispatch,
-    isLeo: user.isLeo,
-    isSupervisor: user.isSupervisor,
-    isEmsFd: user.isEmsFd,
-    isTow: user.isTow,
-    isTaxi: user.isTaxi,
     steamId: user.steamId ?? "",
     discordId: user.discordId ?? "",
-    useOldPerms: false,
   };
 
-  const isRankDisabled = user.rank === "OWNER" || user.id === session?.id;
+  const isUserPendingApproval =
+    cad?.whitelisted && user.whitelistStatus === WhitelistStatus.PENDING;
+  const isUserDenied = cad?.whitelisted && user.whitelistStatus === WhitelistStatus.DECLINED;
   const validate = handleValidate(UPDATE_USER_SCHEMA);
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.BanUsers, Permissions.ManageUsers, Permissions.DeleteUsers],
       }}
     >
@@ -120,11 +142,37 @@ export default function ManageCitizens(props: Props) {
         {t("editUser")}
       </Title>
 
+      {isUserPendingApproval ? (
+        <Alert className="mb-5" type="warning" title="User is pending approval">
+          <p>
+            This user is still pending approval. It must first be approved by an administrator
+            before any changes can be done.{" "}
+            <Link className="font-medium underline" href="/admin/manage/users">
+              Go back
+            </Link>
+          </p>
+        </Alert>
+      ) : null}
+
+      {isUserDenied ? (
+        <Alert
+          className="mb-5"
+          type="warning"
+          message="This user was denied access. This user may first be approved by an administrator before any changes can be done."
+          title="User was denied access"
+        >
+          <Button onPress={handleAcceptUser} variant="amber" className="mt-3 max-w-fit">
+            Accept this user
+          </Button>
+        </Alert>
+      ) : null}
+
       <div className="mt-5">
         <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
           {({ setFieldValue, isValid, values, errors }) => (
             <Form className="p-4 rounded-md dark:border card">
               <TextField
+                isDisabled={isUserPendingApproval || isUserDenied}
                 label="Username"
                 name="username"
                 onChange={(value) => setFieldValue("username", value)}
@@ -132,36 +180,14 @@ export default function ManageCitizens(props: Props) {
                 errorMessage={errors.username}
               />
 
-              <SelectField
-                isDisabled={isRankDisabled}
-                errorMessage={errors.rank}
-                label="Rank"
-                name="rank"
-                onSelectionChange={(key) => setFieldValue("rank", key)}
-                selectedKey={values.rank}
-                options={
-                  isRankDisabled
-                    ? [{ value: user.rank, label: user.rank }]
-                    : [
-                        { value: "ADMIN", label: "Admin" },
-                        { value: "USER", label: "User" },
-                      ]
-                }
-              >
-                <small className="text-base mt-2 text-neutral-600 dark:text-gray-300 mb-3">
-                  The rank does not have any influence on the permissions of the user. It is only
-                  used to identify the user in the system.
-                </small>
-              </SelectField>
-
               <SettingsFormField
                 description="A detailed permissions system where you can assign many actions to a user."
                 label={t("detailedPermissions")}
               >
                 <Button
-                  disabled={user.rank === Rank.OWNER}
+                  disabled={isUserPendingApproval || isUserDenied || user.rank === Rank.OWNER}
                   type="button"
-                  onPress={() => openModal(ModalIds.ManagePermissions)}
+                  onPress={() => modalState.openModal(ModalIds.ManagePermissions)}
                 >
                   {t("managePermissions")}
                 </Button>
@@ -169,9 +195,9 @@ export default function ManageCitizens(props: Props) {
                 <Button
                   variant="cancel"
                   className="ml-2 text-base"
-                  disabled={user.rank === Rank.OWNER}
+                  disabled={isUserPendingApproval || isUserDenied || user.rank === Rank.OWNER}
                   type="button"
-                  onPress={() => openModal(ModalIds.ManageRoles)}
+                  onPress={() => modalState.openModal(ModalIds.ManageRoles)}
                 >
                   {t("manageRoles")}
                 </Button>
@@ -179,6 +205,7 @@ export default function ManageCitizens(props: Props) {
 
               <FormRow>
                 <TextField
+                  isDisabled={isUserPendingApproval || isUserDenied}
                   isOptional
                   label="Steam ID"
                   name="steamId"
@@ -188,6 +215,7 @@ export default function ManageCitizens(props: Props) {
                 />
 
                 <TextField
+                  isDisabled={isUserPendingApproval || isUserDenied}
                   isOptional
                   label="Discord ID"
                   name="discordId"
@@ -200,7 +228,10 @@ export default function ManageCitizens(props: Props) {
               <div className="flex justify-end mt-3">
                 <Link
                   href="/admin/manage/users"
-                  className={classNames(buttonVariants.cancel, "p-1 px-4 rounded-md")}
+                  className={buttonVariants({
+                    variant: "cancel",
+                    className: "p-1 px-4",
+                  })}
                 >
                   {common("goBack")}
                 </Link>
@@ -213,43 +244,25 @@ export default function ManageCitizens(props: Props) {
                   {common("save")}
                 </Button>
               </div>
-
-              <AlertModal
-                title={t("useOldPermissions")}
-                description={
-                  <>
-                    Are you sure you want to use the old permissions system.{" "}
-                    <span className="font-semibold">
-                      You cannot mix the old permissions with new permissions.
-                    </span>
-                  </>
-                }
-                id={ModalIds.AlertUseOldPermissions}
-                deleteText={t("useOldPermissions")}
-                onDeleteClick={() => {
-                  closeModal(ModalIds.AlertUseOldPermissions);
-                  setFieldValue("useOldPerms", true);
-                }}
-              />
             </Form>
           )}
         </Formik>
 
-        {USER_API_TOKENS ? <ApiTokenArea user={user} /> : null}
+        {!isUserPendingApproval || !isUserDenied ? <ApiTokenArea user={user} /> : null}
 
-        {user.rank !== Rank.OWNER ? (
+        {user.rank !== Rank.OWNER && (!isUserPendingApproval || !isUserDenied) ? (
           <>
-            {hasPermissions([Permissions.BanUsers], true) ? (
+            {hasPermissions([Permissions.BanUsers]) ? (
               <BanArea setUser={setUser} user={user} />
             ) : null}
-            {hasPermissions([Permissions.DeleteUsers], true) ? (
+            {hasPermissions([Permissions.DeleteUsers]) ? (
               <DangerZone setUser={setUser} user={user} />
             ) : null}
           </>
         ) : null}
       </div>
 
-      {user.rank !== Rank.OWNER ? (
+      {user.rank !== Rank.OWNER && (!isUserPendingApproval || !isUserDenied) ? (
         <>
           <ManagePermissionsModal onUpdate={(user) => setUser(user)} user={user} />
           <ManageRolesModal onUpdate={(user) => setUser(user)} roles={props.roles} user={user} />
@@ -266,12 +279,6 @@ export const getServerSideProps: GetServerSideProps<Props> = async ({ query, loc
     ["/admin/manage/custom-roles?includeAll=true", { totalCount: 0, customRoles: [] }],
   ]);
 
-  if (!user) {
-    return {
-      notFound: true,
-    };
-  }
-
   return {
     props: {
       user,
@@ -279,7 +286,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async ({ query, loc
       session: sessionUser,
       messages: {
         ...(await getTranslations(
-          ["citizen", "admin", "values", "common"],
+          ["citizen", "admin", "cad-settings", "values", "common"],
           sessionUser?.locale ?? locale,
         )),
       },

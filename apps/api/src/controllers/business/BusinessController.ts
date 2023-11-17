@@ -2,15 +2,23 @@ import { Controller } from "@tsed/di";
 import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { BodyParams, Context, PathParams, QueryParams } from "@tsed/platform-params";
 import { ContentType, Delete, Get, Hidden, Post, Put } from "@tsed/schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import {
   CREATE_COMPANY_SCHEMA,
   JOIN_COMPANY_SCHEMA,
   DELETE_COMPANY_POST_SCHEMA,
+  EDIT_COMPANY_SCHEMA,
 } from "@snailycad/schemas";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { type User, EmployeeAsEnum, MiscCadSettings, WhitelistStatus, cad } from "@prisma/client";
+import {
+  type User,
+  EmployeeAsEnum,
+  type MiscCadSettings,
+  WhitelistStatus,
+  type cad,
+  type Prisma,
+} from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import type * as APITypes from "@snailycad/types/api";
@@ -40,22 +48,47 @@ const businessInclude = {
 export class BusinessController {
   @Get("/")
   async getBusinessesByUser(@Context("user") user: User): Promise<APITypes.GetBusinessesData> {
-    const businesses = await prisma.employee.findMany({
-      where: {
-        userId: user.id,
-        business: { NOT: { status: WhitelistStatus.DECLINED } },
-        NOT: { whitelistStatus: WhitelistStatus.DECLINED },
-      },
-      include: {
-        citizen: { select: { id: true, name: true, surname: true } },
-        business: true,
-        role: { include: { value: true } },
-      },
+    const [ownedBusinesses, joinedBusinesses, joinableBusinesses] = await prisma.$transaction([
+      prisma.employee.findMany({
+        where: {
+          userId: user.id,
+          role: { as: EmployeeAsEnum.OWNER },
+          business: { NOT: { status: WhitelistStatus.DECLINED } },
+        },
+        include: {
+          citizen: { select: { id: true, name: true, surname: true } },
+          business: true,
+          role: { include: { value: true } },
+        },
+      }),
+      prisma.employee.findMany({
+        where: {
+          userId: user.id,
+          business: { NOT: { status: WhitelistStatus.DECLINED } },
+          NOT: { role: { as: EmployeeAsEnum.OWNER } },
+        },
+        include: {
+          citizen: { select: { id: true, name: true, surname: true } },
+          business: true,
+          role: { include: { value: true } },
+        },
+      }),
+      prisma.business.findMany(),
+    ]);
+
+    return { ownedBusinesses, joinedBusinesses, joinableBusinesses };
+  }
+
+  @Get("/search")
+  async searchBusinesses(@QueryParams("query") query: string) {
+    const where: Prisma.BusinessWhereInput = query
+      ? { name: { contains: query, mode: "insensitive" } }
+      : {};
+    const joinableBusinesses = await prisma.business.findMany({
+      where,
     });
 
-    const joinableBusinesses = await prisma.business.findMany({});
-
-    return { businesses, joinableBusinesses };
+    return joinableBusinesses;
   }
 
   @Get("/business/:id")
@@ -84,7 +117,6 @@ export class BusinessController {
             citizen: { select: { name: true, surname: true, id: true } },
           },
         },
-        citizen: { select: { name: true, surname: true, id: true } },
       },
     });
 
@@ -114,7 +146,7 @@ export class BusinessController {
     @BodyParams() body: unknown,
     @Context("user") user: User,
   ): Promise<APITypes.PutBusinessByIdData> {
-    const data = validateSchema(CREATE_COMPANY_SCHEMA, body);
+    const data = validateSchema(EDIT_COMPANY_SCHEMA, body);
 
     const employee = await prisma.employee.findFirst({
       where: {
@@ -197,13 +229,14 @@ export class BusinessController {
     }
 
     if (cad.miscCadSettings?.maxBusinessesPerCitizen) {
-      const length = await prisma.business.count({
+      const ownedBusinessesCount = await prisma.employee.count({
         where: {
           citizenId: citizen.id,
+          role: { as: "OWNER" },
         },
       });
 
-      if (length > cad.miscCadSettings.maxBusinessesPerCitizen) {
+      if (ownedBusinessesCount > cad.miscCadSettings.maxBusinessesPerCitizen) {
         throw new BadRequest("maxBusinessesLength");
       }
     }
@@ -292,7 +325,6 @@ export class BusinessController {
 
   @Post("/create")
   @UsePermissions({
-    fallback: true,
     permissions: [Permissions.CreateBusinesses],
   })
   async createBusiness(
@@ -314,20 +346,20 @@ export class BusinessController {
 
     const { miscCadSettings, businessWhitelisted } = cad;
     if (miscCadSettings?.maxBusinessesPerCitizen) {
-      const length = await prisma.business.count({
+      const ownedBusinessesCount = await prisma.employee.count({
         where: {
           citizenId: owner.id,
+          role: { as: "OWNER" },
         },
       });
 
-      if (length > miscCadSettings.maxBusinessesPerCitizen) {
+      if (ownedBusinessesCount > miscCadSettings.maxBusinessesPerCitizen) {
         throw new BadRequest("maxBusinessesLength");
       }
     }
 
     const business = await prisma.business.create({
       data: {
-        citizenId: owner.id,
         address: data.address,
         name: data.name,
         whitelisted: data.whitelisted,
@@ -379,12 +411,8 @@ export class BusinessController {
     });
 
     const updated = await prisma.business.update({
-      where: {
-        id: business.id,
-      },
-      data: {
-        employees: { connect: { id: employee.id } },
-      },
+      where: { id: business.id },
+      data: { employees: { connect: { id: employee.id } } },
     });
 
     return { business: updated, id: business.id, employee };

@@ -20,11 +20,8 @@ export const CHANGE_USER_SCHEMA = z.object({
   statusViewMode: z.string(),
   tableActionsAlignment: z.string(),
   locale: z.string().nullish(),
-  username: z
-    .string()
-    .min(3)
-    .max(255)
-    .regex(/^([a-z_.\d]+)*[a-z\d]+$/i),
+  developerMode: z.boolean().nullish(),
+  username: z.string().min(3).max(255),
 });
 
 export const CHANGE_PASSWORD_SCHEMA = z.object({
@@ -38,4 +35,9 @@ export const CHANGE_PASSWORD_SCHEMA = z.object({
 export const TEMP_PASSWORD_SCHEMA = z.object({
   newPassword: z.string().min(8).max(255),
   confirmPassword: z.string().min(8).max(255),
+});
+
+export const DASHBOARD_LAYOUT_SCHEMA = z.object({
+  type: z.string(),
+  layout: z.array(z.string()),
 });

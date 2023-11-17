@@ -1,16 +1,14 @@
 import { useTranslations } from "use-intl";
 import ReactSelect, {
-  Props as SelectProps,
-  GroupBase,
-  StylesConfig,
-  ActionMeta,
+  type Props as SelectProps,
+  type GroupBase,
+  type StylesConfig,
+  type ActionMeta,
 } from "react-select";
 import { useAuth } from "context/AuthContext";
 import { useModal } from "state/modalState";
 
-import { MultiValueContainerContextMenu } from "./select/MultiValueContainerContextMenu";
 import { MultiValueContainerPenalCode } from "./select/MultiValueContainerPenalCode";
-import { MultiValueContainerDescription } from "./select/MultiValueContainerDescription";
 
 export interface SelectValue<Value = string> {
   readonly label: string;
@@ -29,22 +27,21 @@ interface Props<Value extends SelectValue = SelectValue<any>>
   isClearable?: boolean;
   disabled?: boolean;
   extra?: {
-    showContextMenuForUnits?: boolean;
     showPenalCodeDescriptions?: boolean;
-    showDLCategoryDescriptions?: boolean;
   };
 }
 
 export function Select({ name, onChange, ...rest }: Props) {
   const { user } = useAuth();
   const common = useTranslations("Common");
-  const { canBeClosed } = useModal();
+  const modalState = useModal();
 
   const value =
     typeof rest.value === "string" ? rest.values.find((v) => v.value === rest.value) : rest.value;
 
   const useDarkTheme =
     user?.isDarkTheme &&
+    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
     typeof window !== "undefined" &&
     window.document.body.classList.contains("dark");
 
@@ -74,22 +71,18 @@ export function Select({ name, onChange, ...rest }: Props) {
   return (
     <ReactSelect
       {...rest}
-      isDisabled={rest.disabled ?? !canBeClosed}
+      placeholder={common("select")}
+      isDisabled={rest.disabled ?? !modalState.canBeClosed}
       isClearable={fixedClearable ? value.some((v) => !v.isFixed) : rest.isClearable}
       value={value}
       options={rest.values}
       onChange={(v: any, meta) => handleChange(v, meta)}
       noOptionsMessage={() => common("noOptions")}
-      styles={styles({ ...theme, hasError: !!rest.errorMessage })}
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      styles={styles({ ...theme, hasError: Boolean(rest.errorMessage) })}
       menuPortalTarget={(typeof document !== "undefined" && document.body) || undefined}
       components={
-        rest.extra?.showContextMenuForUnits
-          ? { MultiValueContainer: MultiValueContainerContextMenu }
-          : rest.extra?.showPenalCodeDescriptions
+        rest.extra?.showPenalCodeDescriptions
           ? { MultiValueContainer: MultiValueContainerPenalCode }
-          : rest.extra?.showDLCategoryDescriptions
-          ? { MultiValueContainer: MultiValueContainerDescription }
           : undefined
       }
     />

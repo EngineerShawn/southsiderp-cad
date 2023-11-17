@@ -1,5 +1,4 @@
-import type { SlateEditor } from "components/editor/editor";
-import type { Text } from "components/editor/types";
+import type { SlateEditor, Text } from "@snailycad/utils/editor";
 import { Editor, Transforms, Element as SlateElement } from "slate";
 
 const LIST_TYPES = ["numbered-list", "bulleted-list"];
@@ -59,7 +58,7 @@ export function isBlockActive(editor: SlateEditor, format: SlateElement["type"])
       }),
     );
 
-    return !!match;
+    return Boolean(match);
   } catch (error) {
     return false;
   }

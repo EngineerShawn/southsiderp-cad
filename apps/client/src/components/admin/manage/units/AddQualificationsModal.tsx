@@ -1,18 +1,17 @@
-import { QualificationValueType } from "@snailycad/types";
+import { QualificationValueType, ValueType } from "@snailycad/types";
 import type {
   GetManageUnitByIdData,
   PostManageUnitAddQualificationData,
 } from "@snailycad/types/api";
 import { Loader, Button } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
+import { ValueSelectField } from "components/form/inputs/value-select-field";
 import { Modal } from "components/modal/Modal";
 import { useValues } from "context/ValuesContext";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 
 interface Props {
   unit: GetManageUnitByIdData;
@@ -22,13 +21,13 @@ interface Props {
 export function AddQualificationsModal({ unit, setUnit }: Props) {
   const common = useTranslations("Common");
   const t = useTranslations();
-  const { isOpen, closeModal, getPayload } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
   const { qualification } = useValues();
-  const type = getPayload<QualificationValueType>(ModalIds.ManageUnitQualifications);
+  const type = modalState.getPayload<QualificationValueType>(ModalIds.ManageUnitQualifications);
 
   function handleClose() {
-    closeModal(ModalIds.ManageUnitQualifications);
+    modalState.closeModal(ModalIds.ManageUnitQualifications);
   }
 
   async function handleSubmit(values: typeof INITIAL_VALUES) {
@@ -40,7 +39,7 @@ export function AddQualificationsModal({ unit, setUnit }: Props) {
 
     if (json.id) {
       setUnit((p) => ({ ...p, qualifications: [json, ...p.qualifications] }));
-      closeModal(ModalIds.ManageUnitQualifications);
+      modalState.closeModal(ModalIds.ManageUnitQualifications);
     }
   }
 
@@ -51,36 +50,27 @@ export function AddQualificationsModal({ unit, setUnit }: Props) {
   return (
     <Modal
       title={type === QualificationValueType.AWARD ? t("Leo.addAward") : t("Leo.addQualification")}
-      onClose={() => closeModal(ModalIds.ManageUnitQualifications)}
-      isOpen={isOpen(ModalIds.ManageUnitQualifications)}
+      onClose={() => modalState.closeModal(ModalIds.ManageUnitQualifications)}
+      isOpen={modalState.isOpen(ModalIds.ManageUnitQualifications)}
       className="min-w-[600px]"
     >
       <Formik initialValues={INITIAL_VALUES} onSubmit={handleSubmit}>
-        {({ handleChange, errors, values, isValid }) => (
+        {({ isValid }) => (
           <Form>
-            <FormField
-              errorMessage={errors.qualificationId}
+            <ValueSelectField
+              fieldName="qualificationId"
+              values={qualification.values}
               label={
                 type === QualificationValueType.AWARD ? t("Leo.award") : t("Leo.qualification")
               }
-            >
-              <Select
-                value={values.qualificationId}
-                name="qualificationId"
-                onChange={handleChange}
-                values={qualification.values
-                  .filter((v) => {
-                    return !v.departments?.length
-                      ? v.qualificationType === type
-                      : v.departments.some((v) => unit.departmentId === v.id) &&
-                          v.qualificationType === type;
-                  })
-                  .map((q) => ({
-                    value: q.id,
-                    label: q.value.value,
-                  }))}
-              />
-            </FormField>
+              valueType={ValueType.QUALIFICATION}
+              filterFn={(value) => {
+                return !value.departments?.length
+                  ? value.qualificationType === type
+                  : value.departments.some((v) => unit.departmentId === v.id) &&
+                      value.qualificationType === type;
+              }}
+            />
 
             <footer className="flex justify-end mt-5">
               <Button type="reset" onPress={handleClose} variant="cancel">

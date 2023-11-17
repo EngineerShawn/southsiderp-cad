@@ -4,14 +4,14 @@ import { useModal } from "state/modalState";
 import { useFormikContext } from "formik";
 import { yesOrNoText } from "lib/utils";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { ManageSeizedItemsModal } from "./manage-seized-items-modal";
 import type { SeizedItem } from "@snailycad/types";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 
 export function SeizedItemsTable({ isReadOnly }: { isReadOnly?: boolean }) {
   const { values, setFieldValue } = useFormikContext<{ seizedItems: SeizedItem[] }>();
-  const { openModal } = useModal();
+  const modalState = useModal();
   const [tempItem, itemState] = useTemporaryItem(values.seizedItems);
 
   const tableState = useTableState();
@@ -20,7 +20,7 @@ export function SeizedItemsTable({ isReadOnly }: { isReadOnly?: boolean }) {
 
   function handleEditClick(item: SeizedItem) {
     itemState.setTempId(item.id);
-    openModal(ModalIds.ManageSeizedItems);
+    modalState.openModal(ModalIds.ManageSeizedItems);
   }
 
   function handleDeleteClick(item: SeizedItem) {

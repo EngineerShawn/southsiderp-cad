@@ -1,13 +1,14 @@
 import * as React from "react";
 import type { RowSelectionState, SortingState, VisibilityState } from "@tanstack/react-table";
 import type { useAsyncTable } from "./use-async-table";
-import { useMounted } from "@casper124578/useful";
+import { useMounted } from "@casperiv/useful";
 
 interface TableStateOptions {
   dragDrop?: {
     onListChange(list: any[]): void;
     disabledIndices?: number[];
   };
+  sorting?: Partial<ReturnType<typeof useAsyncTable>["sorting"]>;
   pagination?: Partial<ReturnType<typeof useAsyncTable>["pagination"]>;
   defaultHiddenColumns?: string[];
   tableId?: string;
@@ -17,6 +18,7 @@ export function useTableState({
   pagination,
   dragDrop,
   tableId,
+  sorting,
   defaultHiddenColumns,
 }: TableStateOptions = {}) {
   const isMounted = useMounted();
@@ -51,7 +53,7 @@ export function useTableState({
     }
   }, [columnVisibility, tableId]);
 
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [regularSorting, setRegularSorting] = React.useState<SortingState>([]);
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
 
   const _pagination = {
@@ -63,10 +65,16 @@ export function useTableState({
     error: pagination?.error,
   };
 
+  const _sorting = {
+    sorting: sorting?.sorting ?? regularSorting,
+    setSorting: sorting?.setSorting ?? setRegularSorting,
+    useServerSorting: Boolean(sorting?.sorting),
+    sortingSchema: sorting?.sortingSchema,
+  };
+
   return {
     tableId,
-    sorting,
-    setSorting,
+    sorting: _sorting,
     rowSelection,
     setRowSelection,
     pagination: _pagination,

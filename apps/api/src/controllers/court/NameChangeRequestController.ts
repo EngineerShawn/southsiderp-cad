@@ -1,8 +1,8 @@
-import type { User } from "@prisma/client";
+import { User } from "@prisma/client";
 import { ContentType, Get, Post } from "@tsed/schema";
 import { BodyParams, Context, UseBeforeEach } from "@tsed/common";
 import { Controller } from "@tsed/di";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
 import { NAME_CHANGE_REQUEST_SCHEMA } from "@snailycad/schemas";
@@ -66,6 +66,7 @@ export class NameChangeRequestController {
         newSurname: data.newSurname,
         citizenId: data.citizenId,
         userId: user.id,
+        description: data.description,
       },
       include: { citizen: true },
     });

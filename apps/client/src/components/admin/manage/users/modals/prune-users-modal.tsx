@@ -1,15 +1,20 @@
 import * as React from "react";
-import { Button, SelectField } from "@snailycad/ui";
+import {
+  Button,
+  SelectField,
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  FullDate,
+} from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useAsyncTable } from "hooks/shared/table/use-async-table";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
-import * as Accordion from "@radix-ui/react-accordion";
-import { CaretDownFill } from "react-bootstrap-icons";
+import { ModalIds } from "types/modal-ids";
 import type { GetManageUsersInactiveUsers } from "@snailycad/types/api";
 import useFetch from "lib/useFetch";
 import { toastMessage } from "lib/toastMessage";
-import { FullDate } from "components/shared/FullDate";
 import { useTranslations } from "use-intl";
 
 const initialData = {
@@ -22,7 +27,7 @@ export function PruneUsersModal() {
   const { state, execute } = useFetch();
   const t = useTranslations("Management");
 
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const asyncTable = useAsyncTable({
     totalCount: initialData.totalCount,
     initialData: initialData.data,
@@ -47,22 +52,22 @@ export function PruneUsersModal() {
       },
     });
 
-    if (json) {
+    if (typeof json.count === "number") {
       toastMessage({
         icon: "success",
-        title: "Users Pruned",
-        message: `Pruned ${json.count} users`,
+        title: t("usersPruned"),
+        message: t("usersPrunedMessage", { count: json.count }),
       });
-      closeModal(ModalIds.PruneUsers);
+      modalState.closeModal(ModalIds.PruneUsers);
     }
   }
 
   return (
     <Modal
-      onClose={() => closeModal(ModalIds.PruneUsers)}
+      onClose={() => modalState.closeModal(ModalIds.PruneUsers)}
       className="w-[600px]"
-      title="Prune Users"
-      isOpen={isOpen(ModalIds.PruneUsers)}
+      title={t("pruneUsers")}
+      isOpen={modalState.isOpen(ModalIds.PruneUsers)}
     >
       <SelectField
         isDisabled={asyncTable.isLoading}
@@ -73,29 +78,19 @@ export function PruneUsersModal() {
         selectedKey={days}
         label={t("lastSeen")}
         options={[
-          { label: "30 Days", value: "30" },
-          { label: "3 Months", value: "90" },
-          { label: "6 Months", value: "180" },
+          { label: t("30Days"), value: "30" },
+          { label: t("3Months"), value: "90" },
+          { label: t("6Months"), value: "180" },
         ]}
       />
 
-      <Accordion.Root disabled={asyncTable.noItemsAvailable} className="mt-4" type="multiple">
-        <Accordion.Item value="unavailable-sounds">
-          <Accordion.Trigger
-            type="button"
-            title="Click to expand"
-            className="accordion-state gap-2 flex items-center justify-between pt-1 text-lg font-semibold text-left"
-          >
-            <h3 className="text-xl font-semibold leading-none">{t("inactiveUsers")}</h3>
+      <Accordion className="mt-4" type="multiple">
+        <AccordionItem value="unavailable-sounds">
+          <AccordionTrigger type="button" title={t("clickToExpand")}>
+            <h3 className="text-xl leading-none">{t("inactiveUsers")}</h3>
+          </AccordionTrigger>
 
-            <CaretDownFill
-              width={16}
-              height={16}
-              className="transform w-4 h-4 transition-transform accordion-state-transform"
-            />
-          </Accordion.Trigger>
-
-          <Accordion.Content className="mt-3">
+          <AccordionContent className="mt-3">
             {asyncTable.items.map((user) => (
               <div key={user.id} className="flex items-center justify-between">
                 <div>
@@ -106,13 +101,13 @@ export function PruneUsersModal() {
                   </p>
                 </div>
                 <Button type="button" size="xs" onPress={() => asyncTable.remove(user.id)}>
-                  Keep
+                  {t("keep")}
                 </Button>
               </div>
             ))}
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion.Root>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <footer>
         <Button

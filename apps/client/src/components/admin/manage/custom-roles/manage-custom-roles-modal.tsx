@@ -1,18 +1,15 @@
 import * as React from "react";
-import { FormField } from "components/form/FormField";
-import { Button, Loader, TextField } from "@snailycad/ui";
+import { Button, Loader, SelectField, TextField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
 import { useModal } from "state/modalState";
 import type { CustomRole, DiscordRole } from "@snailycad/types";
 import { useTranslations } from "use-intl";
-import { Select } from "components/form/Select";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { CUSTOM_ROLE_SCHEMA } from "@snailycad/schemas";
 import { Permissions } from "@snailycad/permissions";
-import { formatPermissionName } from "../users/modals/manage-permissions-modal";
 import { ImageSelectInput, validateFile } from "components/form/inputs/ImageSelectInput";
 import type {
   GetCADDiscordRolesData,
@@ -32,19 +29,21 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
   const [discordRoles, setDiscordRoles] = React.useState<DiscordRole[]>([]);
 
   const { state, execute } = useFetch();
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Management");
+  const tPermission = useTranslations("Permissions");
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.ManageCustomRole);
+    modalState.closeModal(ModalIds.ManageCustomRole);
   }
 
   async function refreshRoles() {
     const { json } = await execute<GetCADDiscordRolesData>({
       path: "/admin/manage/cad-settings/discord/roles",
       method: "GET",
+      noToast: true,
     });
 
     if (Array.isArray(json)) {
@@ -64,7 +63,7 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
 
     const data = {
       ...values,
-      permissions: values.permissions.map((v) => v.value),
+      permissions: values.permissions.map((v) => v),
     };
 
     if (role) {
@@ -77,7 +76,7 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
 
       if (json?.id) {
         jsonId = json.id;
-        closeModal(ModalIds.ManageCustomRole);
+        modalState.closeModal(ModalIds.ManageCustomRole);
         onUpdate?.(json);
       }
     } else {
@@ -90,7 +89,7 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
 
       if (json?.id) {
         jsonId = json.id;
-        closeModal(ModalIds.ManageCustomRole);
+        modalState.closeModal(ModalIds.ManageCustomRole);
         onCreate?.(json);
       }
     }
@@ -118,11 +117,7 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
   const INITIAL_VALUES = {
     name: role?.name ?? "",
     discordRoleId: role?.discordRoleId ?? null,
-    permissions:
-      role?.permissions.map((v) => ({
-        value: v,
-        label: v,
-      })) ?? [],
+    permissions: role?.permissions ?? [],
   };
 
   const validate = handleValidate(CUSTOM_ROLE_SCHEMA);
@@ -131,10 +126,10 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
       className="w-[600px]"
       title={role ? t("editCustomRole") : t("createCustomRole")}
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.ManageCustomRole)}
+      isOpen={modalState.isOpen(ModalIds.ManageCustomRole)}
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, values, errors }) => (
+        {({ setFieldValue, values, errors }) => (
           <Form>
             <TextField
               errorMessage={errors.name}
@@ -145,38 +140,36 @@ export function ManageCustomRolesModal({ role, onClose, onCreate, onUpdate }: Pr
               value={values.name}
             />
 
-            <FormField errorMessage={errors.permissions as string} label="Permissions">
-              <Select
-                isMulti
-                closeMenuOnSelect={false}
-                values={Object.values(Permissions).map((permission) => ({
-                  value: permission,
-                  label: formatPermissionName(permission),
-                }))}
-                value={values.permissions}
-                name="permissions"
-                onChange={handleChange}
-              />
-            </FormField>
+            <SelectField
+              label={t("permissions")}
+              errorMessage={errors.permissions}
+              selectionMode="multiple"
+              selectedKeys={values.permissions}
+              options={Object.keys(Permissions).map((permission) => ({
+                value: permission,
+                label: tPermission(permission),
+              }))}
+              onSelectionChange={(keys) => setFieldValue("permissions", keys)}
+            />
 
-            <FormField optional errorMessage={errors.discordRoleId as string} label="Discord Role">
-              <Select
-                values={discordRoles.map((role) => ({
-                  value: role.id,
-                  label: role.name,
-                }))}
-                value={values.discordRoleId}
-                name="discordRoleId"
-                onChange={handleChange}
-                isClearable
-              />
-            </FormField>
+            <SelectField
+              errorMessage={errors.discordRoleId}
+              isOptional
+              label={t("discordRole")}
+              isClearable
+              options={discordRoles.map((role) => ({
+                value: role.id,
+                label: role.name,
+              }))}
+              selectedKey={values.discordRoleId}
+              onSelectionChange={(key) => setFieldValue("discordRoleId", key)}
+            />
 
             <ImageSelectInput image={image} setImage={setImage} />
 
             <footer className="flex justify-end mt-5">
               <Button type="reset" onPress={handleClose} variant="cancel">
-                Cancel
+                {common("cancel")}
               </Button>
               <Button className="flex items-center" disabled={state === "loading"} type="submit">
                 {state === "loading" ? <Loader className="mr-2" /> : null}

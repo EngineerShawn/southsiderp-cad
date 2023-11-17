@@ -1,9 +1,8 @@
-import { Prisma, ShouldDoType, User } from "@prisma/client";
+import { type Prisma, ShouldDoType, type User } from "@prisma/client";
 import { defaultPermissions, hasPermission } from "@snailycad/permissions";
-import { Rank } from "@snailycad/types";
 import type { Req, Context } from "@tsed/common";
 import { BadRequest, Forbidden } from "@tsed/exceptions";
-import { combinedEmsFdUnitProperties, unitProperties } from "lib/leo/activeOfficer";
+import { combinedEmsFdUnitProperties, unitProperties } from "utils/leo/includes";
 import { getInactivityFilter } from "./leo/utils";
 import { prisma } from "./data/prisma";
 
@@ -19,14 +18,12 @@ export async function getActiveDeputy(options: GetActiveDeputyOptions) {
   const isAdmin = hasPermission({
     userToCheck: options.user,
     permissionsToCheck: defaultPermissions.allDefaultAdminPermissions,
-    fallback: (u) => u.rank !== Rank.USER,
   });
 
   if (options.req?.headers["is-from-dispatch"]?.toString() === "true") {
     const hasDispatchPermissions = hasPermission({
       userToCheck: options.user,
       permissionsToCheck: defaultPermissions.defaultDispatchPermissions,
-      fallback: (user) => user.isDispatch,
     });
 
     if (isAdmin && !hasDispatchPermissions) {
@@ -42,7 +39,6 @@ export async function getActiveDeputy(options: GetActiveDeputyOptions) {
     const hasEmsFdPermissions = hasPermission({
       userToCheck: options.user,
       permissionsToCheck: defaultPermissions.defaultEmsFdPermissions,
-      fallback: (user) => user.isEmsFd,
     });
 
     if (isAdmin && !hasEmsFdPermissions) {

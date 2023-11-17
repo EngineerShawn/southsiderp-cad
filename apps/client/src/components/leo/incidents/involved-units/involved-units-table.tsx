@@ -4,16 +4,19 @@ import { makeUnitName } from "lib/utils";
 import useFetch from "lib/useFetch";
 import type { PutIncidentByIdData } from "@snailycad/types/api";
 import { useAuth } from "context/AuthContext";
-import { EmsFdIncident, IncidentInvolvedUnit, LeoIncident, StatusViewMode } from "@snailycad/types";
+import {
+  type EmsFdIncident,
+  type IncidentInvolvedUnit,
+  type LeoIncident,
+  StatusViewMode,
+} from "@snailycad/types";
 import { useTranslations } from "next-intl";
-import { Button, Loader } from "@snailycad/ui";
+import { Button, FullDate, Loader } from "@snailycad/ui";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
-import { FullDate } from "components/shared/FullDate";
+import { ModalIds } from "types/modal-ids";
 import { generateContrastColor } from "lib/table/get-contrasting-text-color";
 import dynamic from "next/dynamic";
 import { useDispatchState } from "state/dispatch/dispatch-state";
-import { shallow } from "zustand/shallow";
 
 const AddInvolvedUnitToIncidentModal = dynamic(
   async () => (await import("./add-involved-unit")).AddInvolvedUnitToIncidentModal,
@@ -36,15 +39,12 @@ export function InvolvedUnitsTable<T extends LeoIncident | EmsFdIncident>({
   const tableState = useTableState();
   const { user } = useAuth();
   const t = useTranslations("Leo");
-  const { openModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
-  const { activeIncidents, setActiveIncidents } = useDispatchState(
-    (state) => ({
-      setActiveIncidents: state.setActiveIncidents,
-      activeIncidents: state.activeIncidents,
-    }),
-    shallow,
-  );
+  const { activeIncidents, setActiveIncidents } = useDispatchState((state) => ({
+    setActiveIncidents: state.setActiveIncidents,
+    activeIncidents: state.activeIncidents,
+  }));
 
   async function handleUnassignFromCall(unit: IncidentInvolvedUnit) {
     const newAssignedUnits = [...incident.unitsInvolved]
@@ -81,7 +81,11 @@ export function InvolvedUnitsTable<T extends LeoIncident | EmsFdIncident>({
         <h2 className="font-semibold text-2xl">{t("involvedUnits")}</h2>
 
         {isDisabled ? null : (
-          <Button size="xs" type="button" onPress={() => openModal(ModalIds.AddInvolvedUnit)}>
+          <Button
+            size="xs"
+            type="button"
+            onPress={() => modalState.openModal(ModalIds.AddInvolvedUnit)}
+          >
             {t("addUnit")}
           </Button>
         )}

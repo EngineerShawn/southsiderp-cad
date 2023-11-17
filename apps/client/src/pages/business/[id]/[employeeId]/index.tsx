@@ -8,22 +8,20 @@ import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useBusinessState } from "state/business-state";
 import { useTranslations } from "use-intl";
-import { BusinessPost, WhitelistStatus } from "@snailycad/types";
+import { type BusinessPost, WhitelistStatus } from "@snailycad/types";
 import useFetch from "lib/useFetch";
 import dynamic from "next/dynamic";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
-import { classNames } from "lib/classNames";
 import type { DeleteBusinessPostsData, GetBusinessByIdData } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
-import { shallow } from "zustand/shallow";
 
 const AlertModal = dynamic(async () => (await import("components/modal/AlertModal")).AlertModal);
 const ManageBusinessPostModal = dynamic(
-  async () => (await import("components/business/ManagePostModal")).ManageBusinessPostModal,
+  async () => (await import("components/business/manage-post-modal")).ManageBusinessPostModal,
 );
 
 interface Props {
@@ -33,7 +31,7 @@ interface Props {
 
 export default function BusinessId(props: Props) {
   const { state: fetchState, execute } = useFetch();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
 
   const businessActions = useBusinessState((state) => ({
     setCurrentBusiness: state.setCurrentBusiness,
@@ -41,14 +39,11 @@ export default function BusinessId(props: Props) {
     setPosts: state.setPosts,
   }));
 
-  const { currentBusiness, currentEmployee, posts } = useBusinessState(
-    (state) => ({
-      currentBusiness: state.currentBusiness,
-      currentEmployee: state.currentEmployee,
-      posts: state.posts,
-    }),
-    shallow,
-  );
+  const { currentBusiness, currentEmployee, posts } = useBusinessState((state) => ({
+    currentBusiness: state.currentBusiness,
+    currentEmployee: state.currentEmployee,
+    posts: state.posts,
+  }));
 
   const common = useTranslations("Common");
   const t = useTranslations("Business");
@@ -66,17 +61,17 @@ export default function BusinessId(props: Props) {
     if (json) {
       businessActions.setPosts(posts.filter((p) => p.id !== tempPost.id));
       postState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteBusinessPost);
+      modalState.closeModal(ModalIds.AlertDeleteBusinessPost);
     }
   }
 
   function handleEdit(post: BusinessPost) {
-    openModal(ModalIds.ManageBusinessPost);
+    modalState.openModal(ModalIds.ManageBusinessPost);
     postState.setTempId(post.id);
   }
 
   function handleDelete(post: BusinessPost) {
-    openModal(ModalIds.AlertDeleteBusinessPost);
+    modalState.openModal(ModalIds.AlertDeleteBusinessPost);
     postState.setTempId(post.id);
   }
 
@@ -89,7 +84,13 @@ export default function BusinessId(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props]);
 
-  const owner = currentBusiness?.employees?.find((v) => v.citizenId === currentBusiness.citizenId);
+  const isCurrentEmployeeOwner = currentBusiness?.employees?.some(
+    (v) => v.role?.as === "OWNER" && v.citizenId === currentEmployee?.citizenId,
+  );
+  const hasManagePermissions =
+    isCurrentEmployeeOwner ||
+    currentEmployee?.canManageEmployees ||
+    currentEmployee?.canManageVehicles;
 
   if (!currentBusiness || !currentEmployee) {
     return null;
@@ -120,9 +121,7 @@ export default function BusinessId(props: Props) {
     <Layout className="dark:text-white">
       <Breadcrumbs>
         <BreadcrumbItem href="/business">{t("business")}</BreadcrumbItem>
-        <BreadcrumbItem href={`/citizen/${currentBusiness.id}`}>
-          {currentBusiness.name}
-        </BreadcrumbItem>
+        <BreadcrumbItem>{currentBusiness.name}</BreadcrumbItem>
       </Breadcrumbs>
 
       <header className="flex items-center justify-between">
@@ -130,14 +129,17 @@ export default function BusinessId(props: Props) {
 
         <div>
           {currentEmployee.canCreatePosts ? (
-            <Button onPress={() => openModal(ModalIds.ManageBusinessPost)} className="mr-2">
+            <Button
+              onPress={() => modalState.openModal(ModalIds.ManageBusinessPost)}
+              className="mr-2"
+            >
               {t("createPost")}
             </Button>
           ) : null}
-          {owner?.citizenId === currentEmployee.citizenId ? (
+          {hasManagePermissions ? (
             <Link
               href={`/business/${currentBusiness.id}/${currentEmployee.id}/manage`}
-              className={classNames(buttonVariants.default, "p-1 px-4 rounded-md")}
+              className={buttonVariants()}
             >
               {common("manage")}
             </Link>

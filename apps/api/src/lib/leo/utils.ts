@@ -1,12 +1,12 @@
 import {
-  MiscCadSettings,
+  type MiscCadSettings,
   JailTimeScale,
-  CombinedLeoUnit,
-  Officer,
-  AssignedUnit,
-  IncidentInvolvedUnit,
-  Feature,
-  cad,
+  type CombinedLeoUnit,
+  type Officer,
+  type AssignedUnit,
+  type IncidentInvolvedUnit,
+  type Feature,
+  type cad,
 } from "@prisma/client";
 import type { INDIVIDUAL_CALLSIGN_SCHEMA } from "@snailycad/schemas";
 import { prisma } from "lib/data/prisma";
@@ -98,21 +98,21 @@ export async function updateOfficerDivisionsCallsigns({
   callsigns,
 }: {
   officerId: string;
-  disconnectConnectArr: DisconnectOrConnect<string, never>[];
+  disconnectConnectArr: DisconnectOrConnect<string>[];
   callsigns?: Record<string, Zod.infer<typeof INDIVIDUAL_CALLSIGN_SCHEMA>> | null;
 }) {
   if (!callsigns) return;
 
-  const _callsigns = Object.values(callsigns);
+  const callsignValues = Object.values(callsigns);
 
-  if (_callsigns.length <= 0) {
+  if (callsignValues.length <= 0) {
     await prisma.individualDivisionCallsign.deleteMany({
       where: { officerId },
     });
   }
 
   await Promise.all(
-    _callsigns.map(async (callsign) => {
+    callsignValues.map(async (callsign) => {
       const existing = await prisma.individualDivisionCallsign.findFirst({
         where: { officerId, divisionId: callsign.divisionId },
       });
@@ -168,23 +168,27 @@ export function getPrismaNameActiveCallIncident(options: GetPrismaNameActiveCall
   return { prismaName, unitId };
 }
 
-interface GetFirstOfficerFromActiveOfficerOptions<AllowDispatch extends boolean = false> {
+interface GetUserOfficerFromActiveOfficerOptions<AllowDispatch extends boolean = false> {
   activeOfficer: (CombinedLeoUnit & { officers: Officer[] }) | Officer | null;
+  userId: string;
   allowDispatch?: AllowDispatch;
 }
 
-type GetFirstOfficerFromActiveOfficerReturn<AllowDispatch extends boolean = false> =
+type GetUserOfficerFromActiveOfficerReturn<AllowDispatch extends boolean = false> =
   AllowDispatch extends true ? Officer | null : Officer;
 
-export function getFirstOfficerFromActiveOfficer<AllowDispatch extends boolean = false>({
+export function getUserOfficerFromActiveOfficer<AllowDispatch extends boolean = false>({
   activeOfficer,
   allowDispatch,
-}: GetFirstOfficerFromActiveOfficerOptions<AllowDispatch>): GetFirstOfficerFromActiveOfficerReturn<AllowDispatch> {
+  userId,
+}: GetUserOfficerFromActiveOfficerOptions<AllowDispatch>): GetUserOfficerFromActiveOfficerReturn<AllowDispatch> {
   const isCombined = activeOfficer && "officers" in activeOfficer;
-  const officer = isCombined ? activeOfficer.officers[0] : activeOfficer;
+  const officer = isCombined
+    ? activeOfficer.officers.find((officer) => officer.userId === userId)
+    : activeOfficer;
 
   if (allowDispatch && !officer) {
-    return null as GetFirstOfficerFromActiveOfficerReturn<AllowDispatch>;
+    return null as GetUserOfficerFromActiveOfficerReturn<AllowDispatch>;
   }
 
   return officer as Officer;

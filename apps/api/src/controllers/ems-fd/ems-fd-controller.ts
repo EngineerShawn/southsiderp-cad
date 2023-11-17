@@ -3,11 +3,11 @@ import {
   UseBeforeEach,
   Use,
   MultipartFile,
-  PlatformMulterFile,
+  type PlatformMulterFile,
   UseAfter,
 } from "@tsed/common";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
-import { MEDICAL_RECORD_SCHEMA } from "@snailycad/schemas";
+import { DOCTOR_VISIT_SCHEMA, MEDICAL_RECORD_SCHEMA } from "@snailycad/schemas";
 import { QueryParams, BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
@@ -17,21 +17,21 @@ import {
   ShouldDoType,
   type User,
   Feature,
-  Rank,
+  type Prisma,
+  WhatPages,
 } from "@prisma/client";
-import type { EmsFdDeputy } from "@snailycad/types";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
-import { IsAuth } from "middlewares/is-auth";
+import { EmsFdDeputy } from "@snailycad/types";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { ActiveDeputy } from "middlewares/active-deputy";
 import fs from "node:fs/promises";
-import { combinedEmsFdUnitProperties, unitProperties } from "lib/leo/activeOfficer";
 import { validateSchema } from "lib/data/validate-schema";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { getInactivityFilter } from "lib/leo/utils";
 import { Socket } from "services/socket-service";
 import type * as APITypes from "@snailycad/types/api";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { IsFeatureEnabled } from "middlewares/is-enabled";
 import { handlePanicButtonPressed } from "lib/leo/send-panic-button-webhook";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
@@ -39,6 +39,10 @@ import { hasPermission } from "@snailycad/permissions";
 import { getImageWebPPath } from "lib/images/get-image-webp-path";
 import { HandleInactivity } from "middlewares/handle-inactivity";
 import { upsertEmsFdDeputy } from "lib/ems-fd/upsert-ems-fd-deputy";
+import { citizenInclude } from "controllers/citizen/CitizenController";
+import { unitProperties, combinedEmsFdUnitProperties } from "utils/leo/includes";
+import { sendDiscordWebhook } from "~/lib/discord/webhooks";
+import { createWhere } from "../leo/create-where-obj";
 
 @Controller("/ems-fd")
 @UseBeforeEach(IsAuth)
@@ -51,12 +55,24 @@ export class EmsFdController {
 
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
-  async getUserDeputies(@Context("user") user: User): Promise<APITypes.GetMyDeputiesData> {
+  async getUserDeputies(
+    @Context("user") user: User,
+    @QueryParams("query") query: string,
+  ): Promise<APITypes.GetMyDeputiesData> {
+    const where = createWhere({
+      query,
+      type: "DEPUTY",
+      pendingOnly: false,
+      extraWhere: {
+        userId: user.id,
+      },
+    });
+
     const deputies = await prisma.emsFdDeputy.findMany({
-      where: { userId: user.id },
+      where,
+      orderBy: { updatedAt: "desc" },
       include: {
         ...unitProperties,
         qualifications: { include: { qualification: { include: { value: true } } } },
@@ -68,7 +84,6 @@ export class EmsFdController {
 
   @Get("/logs")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd, Permissions.ViewUnits, Permissions.ManageUnits],
   })
   async getDeputyLogs(
@@ -76,13 +91,13 @@ export class EmsFdController {
     @QueryParams("skip", Number) skip = 0,
     @QueryParams("includeAll", Boolean) includeAll = false,
     @QueryParams("emsFdDeputyId", String) emsFdDeputyId?: string,
+    @QueryParams("currentUserOnly", Boolean) currentUserOnly?: boolean,
   ): Promise<APITypes.GetMyDeputiesLogsData> {
     const hasManageUnitsPermissions = hasPermission({
       permissionsToCheck: [Permissions.ManageUnits, Permissions.ViewUnits, Permissions.DeleteUnits],
       userToCheck: user,
-      fallback: (u) => u.rank !== Rank.USER,
     });
-    const userIdObj = hasManageUnitsPermissions ? {} : { userId: user.id };
+    const userIdObj = hasManageUnitsPermissions && !currentUserOnly ? {} : { userId: user.id };
 
     const where = { ...userIdObj, officerId: null, emsFdDeputyId: emsFdDeputyId || undefined };
 
@@ -102,7 +117,6 @@ export class EmsFdController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async createEmsFdDeputy(
@@ -123,7 +137,6 @@ export class EmsFdController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async updateDeputy(
@@ -149,7 +162,6 @@ export class EmsFdController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async deleteDeputy(
@@ -179,7 +191,6 @@ export class EmsFdController {
   @Use(ActiveDeputy)
   @Get("/active-deputy")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd || u.isLeo || u.isDispatch,
     permissions: [Permissions.EmsFd, Permissions.Leo, Permissions.Dispatch],
   })
   async getActiveDeputy(
@@ -191,13 +202,15 @@ export class EmsFdController {
   @Get("/active-deputies")
   @Description("Get all the active EMS/FD deputies")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd || u.isLeo || u.isDispatch,
     permissions: [Permissions.EmsFd, Permissions.Leo, Permissions.Dispatch],
   })
   @UseAfter(HandleInactivity)
   async getActiveDeputies(
     @Context("cad") cad: { miscCadSettings: MiscCadSettings },
     @Context("user") user: User,
+    @QueryParams("includeAll", Boolean) includeAll = false,
+    @QueryParams("skip", Number) skip = 0,
+    @QueryParams("query", String) query?: string,
   ): Promise<APITypes.GetEmsFdActiveDeputies> {
     const unitsInactivityFilter = getInactivityFilter(
       cad,
@@ -210,17 +223,23 @@ export class EmsFdController {
       select: { departmentId: true },
     });
 
+    const emsFdWhere = query ? activeEmsFdDeputiesWhereInput(query) : undefined;
     const [deputies, combinedEmsFdDeputies] = await prisma.$transaction([
       prisma.emsFdDeputy.findMany({
+        orderBy: { updatedAt: "desc" },
+        take: includeAll ? undefined : 12,
+        skip: includeAll ? undefined : skip,
         where: {
           status: { NOT: { shouldDo: ShouldDoType.SET_OFF_DUTY } },
           departmentId: activeDispatcher?.departmentId || undefined,
           ...(unitsInactivityFilter?.filter ?? {}),
+          ...(emsFdWhere ?? {}),
         },
         include: unitProperties,
       }),
       prisma.combinedEmsFdUnit.findMany({
         include: combinedEmsFdUnitProperties,
+        orderBy: { lastStatusChangeTimestamp: "desc" },
         where: {
           ...unitsInactivityFilter?.filter,
           departmentId: activeDispatcher?.departmentId || undefined,
@@ -230,10 +249,10 @@ export class EmsFdController {
 
     return [...combinedEmsFdDeputies, ...deputies];
   }
+
   @Use(ActiveDeputy)
-  @Post("/medical-record")
+  @Post("/medical-records")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async createMedicalRecord(@BodyParams() body: unknown): Promise<APITypes.PostEmsFdMedicalRecord> {
@@ -255,6 +274,7 @@ export class EmsFdController {
         userId: citizen.userId,
         type: data.type,
         description: data.description,
+        descriptionData: data.descriptionData || null,
         bloodGroupId: data.bloodGroup ?? null,
       },
       include: { bloodGroup: true },
@@ -263,14 +283,115 @@ export class EmsFdController {
     return medicalRecord;
   }
 
+  @Put("/medical-records/:id")
+  @Description("Update a medical record by its id")
+  async updateMedicalRecord(
+    @PathParams("id") recordId: string,
+    @BodyParams() body: unknown,
+  ): Promise<APITypes.PutCitizenMedicalRecordsData> {
+    const data = validateSchema(MEDICAL_RECORD_SCHEMA, body);
+
+    const record = await prisma.medicalRecord.findUnique({
+      where: {
+        id: recordId,
+      },
+    });
+
+    if (!record) {
+      throw new NotFound("medicalRecordNotFound");
+    }
+
+    const updated = await prisma.medicalRecord.update({
+      where: {
+        id: record.id,
+      },
+      data: {
+        description: data.description,
+        type: data.type,
+        bloodGroupId: data.bloodGroup || null,
+        descriptionData: data.descriptionData || undefined,
+      },
+      include: {
+        bloodGroup: true,
+      },
+    });
+
+    await prisma.medicalRecord.updateMany({
+      where: { citizenId: record.citizenId },
+      data: { bloodGroupId: data.bloodGroup || undefined },
+    });
+
+    return updated;
+  }
+
+  @Use(ActiveDeputy)
+  @Delete("/medical-records/:id")
+  @Description("Delete a medical record by its id")
+  async deleteMedicalRecord(
+    @PathParams("id") recordId: string,
+  ): Promise<APITypes.DeleteCitizenMedicalRecordsData> {
+    const medicalRecord = await prisma.medicalRecord.findUnique({
+      where: {
+        id: recordId,
+      },
+    });
+
+    if (!medicalRecord) {
+      throw new NotFound("medicalRecordNotFound");
+    }
+
+    await prisma.medicalRecord.delete({
+      where: {
+        id: medicalRecord.id,
+      },
+    });
+
+    return true;
+  }
+
+  @Use(ActiveDeputy)
+  @Post("/doctor-visit")
+  @UsePermissions({
+    permissions: [Permissions.EmsFd],
+  })
+  async createDoctorVisit(@BodyParams() body: unknown): Promise<APITypes.PostEmsFdDoctorVisit> {
+    const data = validateSchema(DOCTOR_VISIT_SCHEMA, body);
+
+    const citizen = await prisma.citizen.findUnique({
+      where: {
+        id: data.citizenId,
+      },
+    });
+
+    if (!citizen) {
+      throw new NotFound("notFound");
+    }
+
+    const doctorVisit = await prisma.doctorVisit.create({
+      data: {
+        citizenId: citizen.id,
+        userId: citizen.userId,
+        conditions: data.conditions,
+        diagnosis: data.diagnosis,
+        medications: data.medications,
+        description: data.description,
+      },
+      include: {
+        citizen: true,
+      },
+    });
+
+    return doctorVisit;
+  }
+
   @Post("/declare/:citizenId")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd || u.isLeo || u.isDispatch,
-    permissions: [Permissions.EmsFd, Permissions.Leo, Permissions.Dispatch],
+    permissions: [Permissions.DeclareCitizenDead, Permissions.ManageDeadCitizens],
   })
   async declareCitizenDeadOrAlive(
     @PathParams("citizenId") citizenId: string,
     @Context("cad") cad: { features?: Record<Feature, boolean> },
+    @Context("user") user: User,
   ): Promise<APITypes.PostEmsFdDeclareCitizenById> {
     const citizen = await prisma.citizen.findUnique({
       where: {
@@ -293,6 +414,19 @@ export class EmsFdController {
         where: { id: citizen.id },
       });
 
+      const webhookData = {
+        embeds: [
+          {
+            title: "Citizen marked as deceased",
+            description: `${citizen.name} ${citizen.surname} has been marked as deceased by ${user.username}`,
+          },
+        ],
+      };
+      await sendDiscordWebhook({
+        data: webhookData,
+        type: "CITIZEN_DECLARED_DEAD",
+      });
+
       return { ...deleted, dead: true, dateOfDead: new Date() };
     }
 
@@ -306,6 +440,19 @@ export class EmsFdController {
       },
     });
 
+    const webhookData = {
+      embeds: [
+        {
+          title: "Citizen marked as deceased",
+          description: `${citizen.name} ${citizen.surname} has been marked as deceased by ${user.username}`,
+        },
+      ],
+    };
+    await sendDiscordWebhook({
+      data: webhookData,
+      type: "CITIZEN_DECLARED_DEAD",
+    });
+
     return updated;
   }
 
@@ -313,7 +460,6 @@ export class EmsFdController {
   @IsFeatureEnabled({ feature: Feature.PANIC_BUTTON })
   @Description("Set the panic button for an ems-fd deputy by their id")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async panicButton(
@@ -349,6 +495,7 @@ export class EmsFdController {
         const onDutyCode = await prisma.statusValue.findFirst({
           where: {
             shouldDo: ShouldDoType.SET_ON_DUTY,
+            OR: [{ whatPages: { isEmpty: true } }, { whatPages: { has: WhatPages.EMS_FD } }],
           },
         });
 
@@ -387,9 +534,27 @@ export class EmsFdController {
     return deputy;
   }
 
+  @Get("/dead-citizens")
+  @Description("Get all the marked dead citizens")
+  @UsePermissions({
+    permissions: [Permissions.ViewDeadCitizens, Permissions.ManageDeadCitizens],
+  })
+  async getDeadCitizens(): Promise<APITypes.GetDeadCitizensData> {
+    const [totalCount, citizens] = await prisma.$transaction([
+      prisma.citizen.count({ where: { dead: true } }),
+      prisma.citizen.findMany({
+        where: {
+          dead: true,
+        },
+        include: citizenInclude,
+      }),
+    ]);
+
+    return { totalCount, citizens };
+  }
+
   @Post("/image/:id")
   @UsePermissions({
-    fallback: (u) => u.isEmsFd,
     permissions: [Permissions.EmsFd],
   })
   async uploadImageToOfficer(
@@ -448,4 +613,43 @@ export class EmsFdController {
       throw new BadRequest("errorUploadingImage");
     }
   }
+}
+
+function activeEmsFdDeputiesWhereInput(query: string) {
+  const [name, surname] = query.toString().toLowerCase().split(/ +/g);
+
+  return {
+    OR: [
+      { callsign: { contains: query, mode: "insensitive" } },
+      { callsign2: { contains: query, mode: "insensitive" } },
+      { division: { value: { value: { contains: query, mode: "insensitive" } } } },
+      { department: { value: { value: { contains: query, mode: "insensitive" } } } },
+      { badgeNumberString: { contains: query, mode: "insensitive" } },
+      { rank: { value: { contains: query, mode: "insensitive" } } },
+      { activeVehicle: { value: { value: { contains: query, mode: "insensitive" } } } },
+      { radioChannelId: { contains: query, mode: "insensitive" } },
+      {
+        status: {
+          AND: [
+            { value: { value: { contains: query, mode: "insensitive" } } },
+            { NOT: { shouldDo: ShouldDoType.SET_OFF_DUTY } },
+          ],
+        },
+      },
+      {
+        citizen: {
+          OR: [
+            {
+              name: { contains: name, mode: "insensitive" },
+              surname: { contains: surname, mode: "insensitive" },
+            },
+            {
+              name: { contains: surname, mode: "insensitive" },
+              surname: { contains: name, mode: "insensitive" },
+            },
+          ],
+        },
+      },
+    ],
+  } satisfies Prisma.EmsFdDeputyWhereInput;
 }

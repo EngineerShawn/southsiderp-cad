@@ -1,37 +1,36 @@
 import * as React from "react";
-import { Button, AsyncListSearchField, Item } from "@snailycad/ui";
+import { Button, AsyncListSearchField, Item, Infofield } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik, useFormikContext } from "formik";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
-import { CustomFieldCategory, Citizen, BoloType } from "@snailycad/types";
+import { CustomFieldCategory, type Citizen, BoloType } from "@snailycad/types";
 import format from "date-fns/format";
 import { NameSearchTabsContainer } from "./tabs/tabs-container";
-import { NameSearchResult, useNameSearch } from "state/search/name-search-state";
+import { type NameSearchResult, useNameSearch } from "state/search/name-search-state";
 import { useRouter } from "next/router";
 import { ArrowLeft, PersonFill } from "react-bootstrap-icons";
 import { useImageUrl } from "hooks/useImageUrl";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { Infofield } from "components/shared/Infofield";
 import dynamic from "next/dynamic";
 import {
-  LicenseInitialValues,
+  type LicenseInitialValues,
   ManageLicensesModal,
 } from "components/citizen/licenses/manage-licenses-modal";
 import { ManageCitizenFlagsModal } from "./ManageCitizenFlagsModal";
-import { CitizenImageModal } from "components/citizen/modals/CitizenImageModal";
+import { CitizenImageModal } from "components/citizen/modals/citizen-image-modal";
 import { ManageCustomFieldsModal } from "./ManageCustomFieldsModal";
-import { CustomFieldsArea } from "../CustomFieldsArea";
 import { useBolos } from "hooks/realtime/useBolos";
 import type { PostLeoSearchCitizenData, PutSearchActionsLicensesData } from "@snailycad/types/api";
 import { NameSearchBasicInformation } from "./sections/basic-information";
 import { NameSearchLicensesSection } from "./sections/licenses-section";
 import { NameSearchFooter } from "./sections/footer";
-import { shallow } from "zustand/shallow";
 import { SpeechAlert } from "./speech-alert";
 import { ImageWrapper } from "components/shared/image-wrapper";
+import { ManageLicensePointsModal } from "./sections/license-points/manage-license-points-modal";
+import { Permissions, usePermission } from "hooks/usePermission";
 
 const VehicleSearchModal = dynamic(
   async () => (await import("components/leo/modals/VehicleSearchModal")).VehicleSearchModal,
@@ -41,8 +40,8 @@ const WeaponSearchModal = dynamic(
   async () => (await import("components/leo/modals/weapon-search-modal")).WeaponSearchModal,
 );
 
-const CreateCitizenModal = dynamic(
-  async () => (await import("./CreateCitizenModal")).CreateCitizenModal,
+const CreateOrManageCitizenModal = dynamic(
+  async () => (await import("./CreateCitizenModal")).CreateOrManageCitizenModal,
 );
 
 const ManageCitizenAddressFlagsModal = dynamic(
@@ -50,8 +49,8 @@ const ManageCitizenAddressFlagsModal = dynamic(
 );
 
 function AutoSubmit() {
-  const { getPayload } = useModal();
-  const payloadCitizen = getPayload<Citizen>(ModalIds.NameSearch);
+  const modalState = useModal();
+  const payloadCitizen = modalState.getPayload<Citizen>(ModalIds.NameSearch);
   const { submitForm } = useFormikContext();
 
   // if there's a name, auto-submit the form.
@@ -65,7 +64,7 @@ function AutoSubmit() {
 }
 
 export function NameSearchModal() {
-  const { isOpen, closeModal, getPayload } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const cT = useTranslations("Citizen");
   const vT = useTranslations("Vehicles");
@@ -73,24 +72,23 @@ export function NameSearchModal() {
   const { state, execute } = useFetch();
   const router = useRouter();
   const { makeImageUrl } = useImageUrl();
-  const { SOCIAL_SECURITY_NUMBERS, CREATE_USER_CITIZEN_LEO } = useFeatureEnabled();
+  const { SOCIAL_SECURITY_NUMBERS, CREATE_USER_CITIZEN_LEO, LEO_EDITABLE_CITIZEN_PROFILE } =
+    useFeatureEnabled();
   const { bolos } = useBolos();
+  const { hasPermissions } = usePermission();
 
-  const { openModal } = useModal();
+  const hasManageCitizenProfilePermissions = hasPermissions([Permissions.LeoManageCitizenProfile]);
   const isLeo = router.pathname === "/officer";
   const isDispatch = router.pathname === "/dispatch";
 
-  const { results, currentResult, setCurrentResult, setResults } = useNameSearch(
-    (state) => ({
-      results: state.results,
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-      setResults: state.setResults,
-    }),
-    shallow,
-  );
+  const { results, currentResult, setCurrentResult, setResults } = useNameSearch((state) => ({
+    results: state.results,
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+    setResults: state.setResults,
+  }));
 
-  const payloadCitizen = getPayload<Citizen>(ModalIds.NameSearch);
+  const payloadCitizen = modalState.getPayload<Citizen>(ModalIds.NameSearch);
 
   const bolo = React.useMemo(() => {
     if (!currentResult) return null;
@@ -105,11 +103,11 @@ export function NameSearchModal() {
   }, [bolos, currentResult]);
 
   React.useEffect(() => {
-    if (!isOpen(ModalIds.NameSearch)) {
+    if (!modalState.isOpen(ModalIds.NameSearch)) {
       setResults(null);
       setCurrentResult(null);
     }
-  }, [isOpen, setCurrentResult, setResults]);
+  }, [modalState, setCurrentResult, setResults]);
 
   async function handleLicensesSubmit(values: LicenseInitialValues) {
     if (!currentResult) return;
@@ -117,18 +115,12 @@ export function NameSearchModal() {
     const { json } = await execute<PutSearchActionsLicensesData>({
       path: `/search/actions/licenses/${currentResult.id}`,
       method: "PUT",
-      data: {
-        ...values,
-        driversLicenseCategory: values.driversLicenseCategory?.map((v) => v.value),
-        pilotLicenseCategory: values.pilotLicenseCategory?.map((v) => v.value),
-        waterLicenseCategory: values.waterLicenseCategory?.map((v) => v.value),
-        firearmLicenseCategory: values.firearmLicenseCategory?.map((v) => v.value),
-      },
+      data: values,
     });
 
     if (json) {
       setCurrentResult({ ...currentResult, ...json });
-      closeModal(ModalIds.ManageLicenses);
+      modalState.closeModal(ModalIds.ManageLicenses);
     }
   }
 
@@ -136,7 +128,7 @@ export function NameSearchModal() {
     const { json, error } = await execute<PostLeoSearchCitizenData>({
       path: "/search/name",
       method: "POST",
-      data: values,
+      data: { name: values.name || values.searchValue, id: values.id },
     });
     if (error) return;
 
@@ -172,36 +164,27 @@ export function NameSearchModal() {
   return (
     <Modal
       title={t("nameSearch")}
-      onClose={() => closeModal(ModalIds.NameSearch)}
-      isOpen={isOpen(ModalIds.NameSearch)}
-      className="w-[850px]"
+      onClose={() => modalState.closeModal(ModalIds.NameSearch)}
+      isOpen={modalState.isOpen(ModalIds.NameSearch)}
+      className={currentResult ? "min-w-[1200px]" : "w-[650px]"}
     >
       <Formik initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ setValues, errors, values }) => (
+        {({ setValues, setFieldValue, errors, values }) => (
           <Form>
             <AsyncListSearchField<NameSearchResult>
               autoFocus
               allowsCustomValue
-              setValues={({ localValue, node }) => {
-                // when the menu closes, it will set the `searchValue` to `""`. We want to keep the value of the search
-                if (typeof node === "undefined" && typeof localValue === "undefined") {
-                  setValues({ ...values, name: values.searchValue });
-                  return;
-                }
-
-                const searchValue =
-                  typeof localValue !== "undefined" ? { searchValue: localValue } : {};
-                let name = node ? { name: node.textValue as string } : {};
-
-                if (typeof node === "undefined" && localValue !== "") {
-                  name = { name: localValue };
-                }
-
+              onInputChange={(value) => setFieldValue("searchValue", value)}
+              onSelectionChange={(node) => {
                 if (node) {
                   setCurrentResult(node.value);
                 }
 
-                setValues({ ...values, ...searchValue, ...name });
+                setValues({
+                  ...values,
+                  searchValue: node?.textValue ?? "",
+                  name: node?.textValue ?? "",
+                });
               }}
               localValue={values.searchValue}
               errorMessage={errors.name}
@@ -353,12 +336,12 @@ export function NameSearchModal() {
                     </SpeechAlert>
                   ) : null}
 
-                  <div className="flex flex-col md:flex-row">
+                  <div className="flex flex-col md:flex-row mt-3">
                     <div className="mr-2 min-w-[100px]">
                       {currentResult.imageId ? (
                         <button
                           type="button"
-                          onClick={() => openModal(ModalIds.CitizenImage)}
+                          onClick={() => modalState.openModal(ModalIds.CitizenImage)}
                           className="cursor-pointer"
                         >
                           <ImageWrapper
@@ -394,7 +377,7 @@ export function NameSearchModal() {
                             size="xs"
                             type="button"
                             className="mt-2"
-                            onPress={() => openModal(ModalIds.ManageCitizenFlags)}
+                            onPress={() => modalState.openModal(ModalIds.ManageCitizenFlags)}
                           >
                             {t("manageCitizenFlags")}
                           </Button>
@@ -412,14 +395,12 @@ export function NameSearchModal() {
                             size="xs"
                             type="button"
                             className="mt-2"
-                            onPress={() => openModal(ModalIds.ManageAddressFlags)}
+                            onPress={() => modalState.openModal(ModalIds.ManageAddressFlags)}
                           >
                             {t("manageAddressFlags")}
                           </Button>
                         ) : null}
                       </div>
-
-                      <CustomFieldsArea currentResult={currentResult} isLeo={isLeo} />
                     </div>
                   </div>
 
@@ -435,9 +416,13 @@ export function NameSearchModal() {
             <AutoSubmit />
             <VehicleSearchModal id={ModalIds.VehicleSearchWithinName} />
             <WeaponSearchModal id={ModalIds.WeaponSearchWithinName} />
-            {CREATE_USER_CITIZEN_LEO && isLeo ? <CreateCitizenModal /> : null}
+            {(CREATE_USER_CITIZEN_LEO && isLeo) ||
+            (LEO_EDITABLE_CITIZEN_PROFILE && hasManageCitizenProfilePermissions) ? (
+              <CreateOrManageCitizenModal />
+            ) : null}
             {currentResult && !currentResult.isConfidential ? (
               <>
+                <ManageLicensePointsModal />
                 <ManageCitizenFlagsModal />
                 <ManageCitizenAddressFlagsModal />
                 <ManageCustomFieldsModal

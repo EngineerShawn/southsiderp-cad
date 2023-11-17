@@ -1,8 +1,7 @@
-import type * as React from "react";
-import { TextField } from "@snailycad/ui";
+import * as React from "react";
+import { TextField, FormRow } from "@snailycad/ui";
 import { FormField } from "components/form/FormField";
 import { Select } from "components/form/Select";
-import { FormRow } from "components/form/FormRow";
 import { ImageSelectInput } from "components/form/inputs/ImageSelectInput";
 import { CallSignPreview } from "../CallsignPreview";
 import type { Officer } from "@snailycad/types";
@@ -52,15 +51,11 @@ export function ManageOfficerFields({
 
       {BADGE_NUMBERS ? (
         <TextField
-          errorMessage={errors.badgeNumber}
+          errorMessage={errors.badgeNumberString}
           label={t("badgeNumber")}
-          name="badgeNumber"
-          onChange={(value) => {
-            isNaN(parseInt(value))
-              ? setFieldValue("badgeNumber", value)
-              : setFieldValue("badgeNumber", parseInt(value));
-          }}
-          value={String(values.badgeNumber)}
+          name="badgeNumberString"
+          onChange={(value) => setFieldValue("badgeNumberString", value)}
+          value={values.badgeNumberString}
         />
       ) : null}
 
@@ -135,7 +130,9 @@ export function getManageOfficerFieldsDefaults(options: GetManageOfficerFieldsDe
     callsign: options.officer?.callsign ?? "",
     callsign2: options.officer?.callsign2 ?? "",
     divisions: options.officer?.divisions.map((v) => ({ value: v.id, label: v.value.value })) ?? [],
-    badgeNumber: options.features.BADGE_NUMBERS ? options.officer?.badgeNumber ?? "" : undefined,
+    badgeNumberString: options.features.BADGE_NUMBERS
+      ? options.officer?.badgeNumberString ?? ""
+      : undefined,
     citizenId: options.officer?.citizenId ?? "",
     name: options.officer
       ? `${options.officer.citizen.name} ${options.officer.citizen.surname}`

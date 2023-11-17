@@ -5,23 +5,24 @@ import { BodyParams, Context, PathParams, QueryParams } from "@tsed/platform-par
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
 import { Use, UseAfter, UseBeforeEach } from "@tsed/platform-middlewares";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { ActiveOfficer } from "middlewares/active-officer";
 import { Socket } from "services/socket-service";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { leoProperties } from "utils/leo/includes";
+
 import { validateSchema } from "lib/data/validate-schema";
 import {
-  Bolo,
+  type Bolo,
   BoloType,
-  CombinedLeoUnit,
+  type CombinedLeoUnit,
   DiscordWebhookType,
-  Officer,
-  Prisma,
+  type Officer,
+  type Prisma,
 } from "@prisma/client";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import type { APIEmbed } from "discord-api-types/v10";
 import { sendDiscordWebhook, sendRawWebhook } from "lib/discord/webhooks";
-import { getFirstOfficerFromActiveOfficer, getInactivityFilter } from "lib/leo/utils";
+import { getUserOfficerFromActiveOfficer, getInactivityFilter } from "lib/leo/utils";
 import type * as APITypes from "@snailycad/types/api";
 import type { cad } from "@snailycad/types";
 import { getTranslator } from "utils/get-translator";
@@ -38,7 +39,6 @@ export class BoloController {
 
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
   })
   @UseAfter(HandleInactivity)
@@ -97,15 +97,19 @@ export class BoloController {
   @Post("/")
   @Description("Create a new BOLO")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo],
   })
   async createBolo(
     @BodyParams() body: unknown,
+    @Context("sessionUserId") sessionUserId: string,
     @Context("activeOfficer") activeOfficer: (CombinedLeoUnit & { officers: Officer[] }) | Officer,
   ): Promise<APITypes.PostBolosData> {
     const data = validateSchema(CREATE_BOLO_SCHEMA, body);
-    const officer = getFirstOfficerFromActiveOfficer({ allowDispatch: true, activeOfficer });
+    const officer = getUserOfficerFromActiveOfficer({
+      userId: sessionUserId,
+      allowDispatch: true,
+      activeOfficer,
+    });
 
     const bolo = await prisma.bolo.create({
       data: {
@@ -141,7 +145,6 @@ export class BoloController {
   @Put("/:id")
   @Description("Update a BOLO by its id")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo],
   })
   async updateBolo(
@@ -186,7 +189,6 @@ export class BoloController {
   @Delete("/:id")
   @Description("Delete a BOLO by its id")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo],
   })
   async deleteBolo(@PathParams("id") id: string): Promise<APITypes.DeleteBolosData> {
@@ -213,7 +215,6 @@ export class BoloController {
   @Post("/mark-stolen/:id")
   @Description("Mark a vehicle as stolen by its id")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo],
   })
   async reportVehicleStolen(@BodyParams() body: any): Promise<APITypes.PostMarkStolenData> {

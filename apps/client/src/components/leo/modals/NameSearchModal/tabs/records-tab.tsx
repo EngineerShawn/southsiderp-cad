@@ -1,10 +1,10 @@
 import * as React from "react";
 import compareDesc from "date-fns/compareDesc";
 import { useRouter } from "next/router";
-import { Record, RecordType } from "@snailycad/types";
+import { PaymentStatus, type Record, RecordType } from "@snailycad/types";
 import { useTranslations } from "use-intl";
-import { Button, TabsContent } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { Button, FullDate, Loader, Status, TabsContent } from "@snailycad/ui";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
@@ -12,12 +12,13 @@ import { makeUnitName } from "lib/utils";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { Table, useTableState } from "components/shared/Table";
 import { ManageRecordModal } from "../../manage-record/manage-record-modal";
-import { FullDate } from "components/shared/FullDate";
 import { Permissions, usePermission } from "hooks/usePermission";
 import { ViolationsColumn } from "components/leo/ViolationsColumn";
-import type { DeleteRecordsByIdData } from "@snailycad/types/api";
-import { Status } from "components/shared/Status";
+import type { DeleteRecordsByIdData, PutRecordsByIdData } from "@snailycad/types/api";
 import { RecordsCaseNumberColumn } from "components/leo/records-case-number-column";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
+import { getAPIUrl } from "@snailycad/utils/api-url";
+import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 
 interface RecordsTabProps {
   records: Record[];
@@ -34,10 +35,10 @@ export function RecordsTab({
 }: RecordsTabProps) {
   const t = useTranslations();
   const { state, execute } = useFetch();
-  const { getPayload, closeModal } = useModal();
+  const modalState = useModal();
 
-  const tempItem = getPayload<Record>(ModalIds.AlertDeleteRecord);
-  const tempEditRecord = getPayload<Record>(ModalIds.ManageRecord);
+  const tempItem = modalState.getPayload<Record>(ModalIds.AlertDeleteRecord);
+  const tempEditRecord = modalState.getPayload<Record>(ModalIds.ManageRecord);
 
   if (!currentResult && !isCitizen) {
     return null;
@@ -79,7 +80,7 @@ export function RecordsTab({
         Record: currentResult.Record.filter((v) => v.id !== tempItem.id),
       });
 
-      closeModal(ModalIds.AlertDeleteRecord);
+      modalState.closeModal(ModalIds.AlertDeleteRecord);
     }
   }
 
@@ -95,7 +96,7 @@ export function RecordsTab({
             {data.length <= 0 ? (
               <p className="text-neutral-700 dark:text-gray-400 my-2">{noValuesText}</p>
             ) : (
-              <RecordsTable currentResult={currentResult} data={data} />
+              <RecordsTable onEdit={handleRecordUpdate} currentResult={currentResult} data={data} />
             )}
           </React.Fragment>
         ) : (
@@ -132,6 +133,15 @@ export function RecordsTab({
   );
 }
 
+export function downloadFile(url: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
 export function RecordsTable({
   data,
   hasDeletePermissions,
@@ -145,10 +155,13 @@ export function RecordsTable({
   hasDeletePermissions?: boolean;
   data: Record[];
 }) {
+  const [exportState, setExportState] = React.useState<"loading" | "idle">("idle");
+
   const common = useTranslations("Common");
-  const { openModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const router = useRouter();
+  const { execute, state } = useFetch();
 
   const isCitizenCreation = router.pathname === "/citizen/create";
   const isCitizen = router.pathname.startsWith("/citizen") && !isCitizenCreation;
@@ -156,18 +169,16 @@ export function RecordsTable({
   const { generateCallsign } = useGenerateCallsign();
   const tableState = useTableState();
   const currency = common("currency");
+  const { CITIZEN_RECORD_PAYMENTS } = useFeatureEnabled();
 
   const { hasPermissions } = usePermission();
   const _hasDeletePermissions =
     hasDeletePermissions ??
-    hasPermissions(
-      [
-        Permissions.ManageExpungementRequests,
-        Permissions.ManageNameChangeRequests,
-        Permissions.DeleteCitizenRecords,
-      ],
-      (u) => u.isSupervisor,
-    );
+    hasPermissions([
+      Permissions.ManageExpungementRequests,
+      Permissions.ManageNameChangeRequests,
+      Permissions.DeleteCitizenRecords,
+    ]);
 
   function handleDeleteClick(record: Record) {
     if (onDelete) {
@@ -176,7 +187,39 @@ export function RecordsTable({
     }
 
     if (!_hasDeletePermissions) return;
-    openModal(ModalIds.AlertDeleteRecord, record);
+    modalState.openModal(ModalIds.AlertDeleteRecord, record);
+  }
+
+  async function handleMarkAsPaid(record: Record) {
+    const { json } = await execute<PutRecordsByIdData>({
+      path: `/records/mark-as-paid/${record.id}`,
+      method: "POST",
+    });
+
+    if (json.id) {
+      onEdit?.(json);
+    }
+  }
+
+  async function handleExportClick(record: Record) {
+    setExportState("loading");
+
+    // using regular fetch here because axios doesn't support blob responses
+    const apiUrl = getAPIUrl();
+    const response = await fetch(`${apiUrl}/records/pdf/record/${record.id}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        accept: "application/pdf",
+      },
+    });
+
+    const blob = new Blob([await response.blob()], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+
+    downloadFile(url, `record-${record.id}.pdf`);
+
+    setExportState("idle");
   }
 
   function handleEditClick(record: Record) {
@@ -185,7 +228,7 @@ export function RecordsTable({
       return;
     }
 
-    openModal(ModalIds.ManageRecord, {
+    modalState.openModal(ModalIds.ManageRecord, {
       ...record,
       citizenName: `${currentResult?.name} ${currentResult?.surname}`,
       businessId: currentResult?.id,
@@ -225,37 +268,72 @@ export function RecordsTable({
               id: record.id,
               caseNumber: <RecordsCaseNumberColumn record={record} />,
               violations: <ViolationsColumn violations={record.violations} />,
-              postal: record.postal,
               officer: record.officer
                 ? `${generateCallsign(record.officer)} ${makeUnitName(record.officer)}`
                 : common("none"),
               paymentStatus: <Status fallback="—">{record.paymentStatus}</Status>,
               totalCost: `${currency}${formatSum(totalCost())}`,
-              notes: record.notes || common("none"),
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-              createdAt: record.createdAt ? <FullDate>{record.createdAt}</FullDate> : "-",
-              actions: isCitizen ? null : (
+              notes: (
+                <CallDescription
+                  data={{ description: record.notes, descriptionData: record.descriptionData }}
+                />
+              ),
+              createdAt: <FullDate>{record.createdAt}</FullDate>,
+              actions: (
                 <>
-                  <Button
-                    type="button"
-                    onPress={() => handleEditClick(record)}
-                    size="xs"
-                    variant="success"
-                  >
-                    {common("edit")}
-                  </Button>
-
-                  {_hasDeletePermissions ? (
-                    <Button
-                      className="ml-2"
-                      type="button"
-                      onPress={() => handleDeleteClick(record)}
-                      size="xs"
-                      variant="danger"
-                    >
-                      {common("delete")}
-                    </Button>
+                  {isCitizen && CITIZEN_RECORD_PAYMENTS ? (
+                    record.paymentStatus === PaymentStatus.PAID ? (
+                      "—"
+                    ) : (
+                      <Button
+                        variant="success"
+                        type="button"
+                        onPress={() => handleMarkAsPaid(record)}
+                        size="xs"
+                        className="inline-flex mr-2 items-center gap-2"
+                        disabled={state === "loading"}
+                      >
+                        {state === "loading" ? <Loader className="w-3 h-3" /> : null}
+                        {t("Citizen.markAsPaid")}
+                      </Button>
+                    )
                   ) : null}
+
+                  {isCitizen ? null : (
+                    <>
+                      <Button
+                        type="button"
+                        onPress={() => handleExportClick(record)}
+                        size="xs"
+                        className="inline-flex mr-2 items-center gap-2"
+                        disabled={exportState === "loading"}
+                      >
+                        {exportState === "loading" ? <Loader className="w-3 h-3" /> : null}
+                        {common("export")}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        onPress={() => handleEditClick(record)}
+                        size="xs"
+                        variant="success"
+                      >
+                        {common("edit")}
+                      </Button>
+
+                      {_hasDeletePermissions ? (
+                        <Button
+                          className="ml-2"
+                          type="button"
+                          onPress={() => handleDeleteClick(record)}
+                          size="xs"
+                          variant="danger"
+                        >
+                          {common("delete")}
+                        </Button>
+                      ) : null}
+                    </>
+                  )}
                 </>
               ),
             };
@@ -263,14 +341,13 @@ export function RecordsTable({
         columns={[
           isCitizenCreation ? { header: common("type"), accessorKey: "type" } : null,
           isCitizenCreation ? null : { header: t("Leo.caseNumber"), accessorKey: "caseNumber" },
+          { header: t("Leo.notes"), accessorKey: "notes" },
           { header: t("Leo.violations"), accessorKey: "violations" },
-          { header: t("Leo.postal"), accessorKey: "postal" },
           { header: t("Leo.officer"), accessorKey: "officer" },
           { header: t("Leo.paymentStatus"), accessorKey: "paymentStatus" },
           isCitizen ? { header: t("Leo.totalCost"), accessorKey: "totalCost" } : null,
-          { header: t("Leo.notes"), accessorKey: "notes" },
-          isCitizenCreation ? null : { header: common("createdAt"), accessorKey: "createdAt" },
-          isCitizen ? null : { header: common("actions"), accessorKey: "actions" },
+          { header: common("createdAt"), accessorKey: "createdAt" },
+          { header: common("actions"), accessorKey: "actions" },
         ]}
       />
     </div>

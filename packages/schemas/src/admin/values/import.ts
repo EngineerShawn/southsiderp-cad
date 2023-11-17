@@ -36,6 +36,7 @@ const TYPE_REGEX = /STATUS_CODE|SITUATION_CODE/;
 export const CODES_10_SCHEMA = BASE_VALUE_SCHEMA.extend({
   shouldDo: z.string().regex(SHOULD_DO_REGEX),
   color: z.string().max(255).nullish(),
+  textColor: z.string().max(255).nullish(),
   type: z.string().regex(TYPE_REGEX).max(255),
   whatPages: z.array(z.any()).max(3).nullish(),
   departments: z.array(z.any()).nullish(),
@@ -57,7 +58,7 @@ export const BUSINESS_ROLE_ARR = z.array(BUSINESS_ROLE_SCHEMA).min(1);
 /**
  * driverslicense_category
  */
-const DLC_TYPE_REGEX = /AUTOMOTIVE|AVIATION|WATER|FIREARM/;
+const DLC_TYPE_REGEX = /AUTOMOTIVE|AVIATION|WATER|FIREARM|HUNTING|FISHING|OTHER/;
 
 export const DLC_SCHEMA = BASE_VALUE_SCHEMA.extend({
   type: z.string().regex(DLC_TYPE_REGEX).max(255),
@@ -79,6 +80,10 @@ export const DEPARTMENT_SCHEMA = BASE_VALUE_SCHEMA.extend({
   defaultOfficerRankId: z.string().nullish(),
   isConfidential: z.boolean().nullish(),
   extraFields: z.any().nullish(),
+  customTemplate: z.string().nullish(),
+  departmentLinks: z
+    .array(z.object({ title: z.string().max(255), url: z.string().url() }))
+    .nullish(),
 });
 
 export const DEPARTMENT_ARR = z.array(DEPARTMENT_SCHEMA).min(1);
@@ -139,6 +144,7 @@ export const QUALIFICATION_ARR = z.array(QUALIFICATION_SCHEMA).min(1);
  */
 export const CALL_TYPE_SCHEMA = BASE_VALUE_SCHEMA.extend({
   priority: z.string().nullish(),
+  isDisposition: z.boolean().nullish(),
 });
 
 export const CALL_TYPE_ARR = z.array(CALL_TYPE_SCHEMA).min(1);
@@ -150,6 +156,7 @@ export const CALL_TYPE_ARR = z.array(CALL_TYPE_SCHEMA).min(1);
 export const EMERGENCY_VEHICLE_SCHEMA = BASE_VALUE_SCHEMA.extend({
   departments: z.array(z.string()).min(1),
   divisions: z.array(z.string()).nullish(),
+  extraFields: z.any().nullish(),
 });
 
 export const EMERGENCY_VEHICLE_ARR = z.array(EMERGENCY_VEHICLE_SCHEMA).min(1);

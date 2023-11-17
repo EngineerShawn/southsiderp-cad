@@ -1,4 +1,4 @@
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "../prisma/index";
 import type * as Types from "../index.js";
 
 /** ems-fd search */
@@ -10,6 +10,7 @@ export type PostEmsFdMedicalRecordsSearchData =
   | (Types.Citizen & {
       officers?: (Prisma.Officer & { department: Prisma.DepartmentValue | null })[] | undefined;
       medicalRecords: Types.MedicalRecord[];
+      DoctorVisit: Omit<Types.DoctorVisit, "citizen">[];
       isConfidential: false;
     })
   | (Pick<
@@ -65,6 +66,7 @@ export type PostLeoSearchWeaponData =
       citizen: Prisma.Citizen;
       model: Types.WeaponValue;
       registrationStatus: Prisma.Value;
+      flags?: Prisma.Value[];
     })
   | null;
 
@@ -72,16 +74,16 @@ export type PostLeoSearchWeaponData =
  * @method POST
  * @route /search/vehicle
  */
-export type PostLeoSearchVehicleData =
-  | (Types.RegisteredVehicle & {
-      customFields: Types.CustomFieldValue[];
-      allCustomFields: Types.CustomField[];
-      TruckLog: Prisma.TruckLog[];
-    })
-  | null;
+interface BasePostLeoSearchVehicleData extends Types.RegisteredVehicle {
+  customFields: Types.CustomFieldValue[];
+  TruckLog: Prisma.TruckLog[];
+  allCustomFields?: Types.CustomField[];
+  citizen?: (Prisma.Citizen & { warrants?: Types.Warrant[] }) | null;
+}
+
+export type PostLeoSearchVehicleData = BasePostLeoSearchVehicleData | null;
 
 export type PostLeoSearchBusinessData = (Types.Business & {
-  citizen: Types.BaseCitizen;
   vehicles: Types.RegisteredVehicle[];
   employees: Types.Employee[];
   Record: Types.Record[];
@@ -109,6 +111,12 @@ export type PutSearchActionsLicensesData = Types.Citizen;
 
 /**
  * @method PUT
+ * @route /search/actions/license-points/:citizenId
+ */
+export type PutSearchActionsLicensePointsData = Types.Citizen;
+
+/**
+ * @method PUT
  * @route /search/actions/vehicle-licenses/:vehicleId
  */
 export type PutSearchActionsVehicleLicensesData = PostLeoSearchVehicleData;
@@ -131,6 +139,14 @@ export type PutSearchActionsCitizenFlagsData = Pick<Types.Citizen, "id" | "flags
  */
 export type PutSearchActionsCitizenAddressFlagsData = Pick<Types.Citizen, "id"> & {
   addressFlags: Types.Value[];
+};
+
+/**
+ * @method PUT
+ * @route /search/actions/weapon-flags/:weapon
+ */
+export type PutSearchActionsWeaponFlagsData = Pick<Prisma.Weapon, "id"> & {
+  flags: Types.Value[];
 };
 
 /**

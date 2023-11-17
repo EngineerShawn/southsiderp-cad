@@ -1,20 +1,18 @@
 import * as React from "react";
 import { useTranslations } from "use-intl";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate, Status } from "@snailycad/ui";
 import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import { requestAll } from "lib/utils";
 import type { GetServerSideProps } from "next";
-import { LicenseExam, LicenseExamStatus } from "@snailycad/types";
+import { type LicenseExam, LicenseExamStatus } from "@snailycad/types";
 import { Table, useTableState } from "components/shared/Table";
 import { Title } from "components/shared/Title";
-import { FullDate } from "components/shared/FullDate";
 import { Permissions } from "@snailycad/permissions";
-import { Status } from "components/shared/Status";
-import { ManageExamModal } from "components/leo/exams/ManageExamModal";
+import { ManageExamModal } from "components/leo/exams/manage-license-exam-modal";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { usePermission } from "hooks/usePermission";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
@@ -30,7 +28,7 @@ interface Props {
 export default function CitizenLogs({ data }: Props) {
   const [search, setSearch] = React.useState("");
   const { hasPermissions } = usePermission();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const common = useTranslations("Common");
   const { state, execute } = useFetch();
@@ -49,10 +47,7 @@ export default function CitizenLogs({ data }: Props) {
   });
   const tableState = useTableState({ pagination: asyncTable.pagination });
   const [tempExam, examState] = useTemporaryItem(asyncTable.items);
-  const hasManagePermissions = hasPermissions(
-    [Permissions.ManageLicenseExams],
-    (u) => u.isSupervisor,
-  );
+  const hasManagePermissions = hasPermissions([Permissions.ManageLicenseExams]);
 
   const PASS_FAIL_LABELS = {
     PASSED: t("Vehicles.passed"),
@@ -68,7 +63,7 @@ export default function CitizenLogs({ data }: Props) {
     });
 
     if (typeof json === "boolean") {
-      closeModal(ModalIds.AlertDeleteExam);
+      modalState.closeModal(ModalIds.AlertDeleteExam);
 
       asyncTable.remove(tempExam.id);
       examState.setTempId(null);
@@ -77,18 +72,17 @@ export default function CitizenLogs({ data }: Props) {
 
   function handleDeleteClick(exam: LicenseExam) {
     examState.setTempId(exam.id);
-    openModal(ModalIds.AlertDeleteExam);
+    modalState.openModal(ModalIds.AlertDeleteExam);
   }
 
   function handleEditClick(exam: LicenseExam) {
     examState.setTempId(exam.id);
-    openModal(ModalIds.ManageExam);
+    modalState.openModal(ModalIds.ManageExam);
   }
 
   return (
     <Layout
       permissions={{
-        fallback: (u) => u.isLeo,
         permissions: [Permissions.ViewLicenseExams, Permissions.ManageLicenseExams],
       }}
       className="dark:text-white"
@@ -98,81 +92,79 @@ export default function CitizenLogs({ data }: Props) {
 
         {hasManagePermissions ? (
           <div>
-            <Button onPress={() => openModal(ModalIds.ManageExam)}>
+            <Button onPress={() => modalState.openModal(ModalIds.ManageExam)}>
               {t("licenseExams.createExam")}
             </Button>
           </div>
         ) : null}
       </header>
 
+      <SearchArea
+        totalCount={data.totalCount}
+        search={{ search, setSearch }}
+        asyncTable={asyncTable}
+      />
+
       {asyncTable.noItemsAvailable ? (
         <p className="mt-5">{t("licenseExams.noExams")}</p>
       ) : (
-        <>
-          <SearchArea
-            totalCount={data.totalCount}
-            search={{ search, setSearch }}
-            asyncTable={asyncTable}
-          />
+        <Table
+          tableState={tableState}
+          data={asyncTable.items.map((exam) => {
+            const hasPassedOrFailed = exam.status !== LicenseExamStatus.IN_PROGRESS;
 
-          <Table
-            tableState={tableState}
-            data={asyncTable.items.map((exam) => {
-              const hasPassedOrFailed = exam.status !== LicenseExamStatus.IN_PROGRESS;
-
-              return {
-                id: exam.id,
-                rowProps: {
-                  className: hasPassedOrFailed ? "opacity-60" : undefined,
-                },
-                type: exam.type,
-                citizen: `${exam.citizen.name} ${exam.citizen.surname}`,
-                theoryExam: (
-                  <span className="capitalize">
-                    {exam.theoryExam ? PASS_FAIL_LABELS[exam.theoryExam] : "—"}
-                  </span>
-                ),
-                practiceExam: (
-                  <span className="capitalize">
-                    {exam.practiceExam ? PASS_FAIL_LABELS[exam.practiceExam] : "—"}
-                  </span>
-                ),
-                status: <Status>{exam.status}</Status>,
-                categories: exam.categories?.map((v) => v.value.value).join(", ") || "—",
-                license: exam.license.value,
-                createdAt: <FullDate>{exam.createdAt}</FullDate>,
-                actions: (
-                  <>
-                    {hasPassedOrFailed ? null : (
-                      <Button variant="success" size="xs" onPress={() => handleEditClick(exam)}>
-                        {common("edit")}
-                      </Button>
-                    )}
-                    <Button
-                      className="ml-2"
-                      variant="danger"
-                      size="xs"
-                      onPress={() => handleDeleteClick(exam)}
-                    >
-                      {common("delete")}
+            return {
+              id: exam.id,
+              rowProps: {
+                className: hasPassedOrFailed ? "opacity-60" : undefined,
+              },
+              type: exam.type,
+              citizen: `${exam.citizen.name} ${exam.citizen.surname}`,
+              theoryExam: (
+                <span className="capitalize">
+                  {exam.theoryExam ? PASS_FAIL_LABELS[exam.theoryExam] : "—"}
+                </span>
+              ),
+              practiceExam: (
+                <span className="capitalize">
+                  {exam.practiceExam ? PASS_FAIL_LABELS[exam.practiceExam] : "—"}
+                </span>
+              ),
+              status: <Status>{exam.status}</Status>,
+              categories: exam.categories?.map((v) => v.value.value).join(", ") || "—",
+              license: exam.license.value,
+              createdAt: <FullDate>{exam.createdAt}</FullDate>,
+              actions: (
+                <>
+                  {hasPassedOrFailed ? null : (
+                    <Button variant="success" size="xs" onPress={() => handleEditClick(exam)}>
+                      {common("edit")}
                     </Button>
-                  </>
-                ),
-              };
-            })}
-            columns={[
-              { header: common("type"), accessorKey: "type" },
-              { header: t("Leo.citizen"), accessorKey: "citizen" },
-              { header: t("licenseExams.theoryExam"), accessorKey: "theoryExam" },
-              { header: t("licenseExams.practiceExam"), accessorKey: "practiceExam" },
-              { header: t("Leo.status"), accessorKey: "status" },
-              { header: t("licenseExams.categories"), accessorKey: "categories" },
-              { header: t("Leo.license"), accessorKey: "license" },
-              { header: common("createdAt"), accessorKey: "createdAt" },
-              hasManagePermissions ? { header: common("actions"), accessorKey: "actions" } : null,
-            ]}
-          />
-        </>
+                  )}
+                  <Button
+                    className="ml-2"
+                    variant="danger"
+                    size="xs"
+                    onPress={() => handleDeleteClick(exam)}
+                  >
+                    {common("delete")}
+                  </Button>
+                </>
+              ),
+            };
+          })}
+          columns={[
+            { header: common("type"), accessorKey: "type" },
+            { header: t("Leo.citizen"), accessorKey: "citizen" },
+            { header: t("licenseExams.theoryExam"), accessorKey: "theoryExam" },
+            { header: t("licenseExams.practiceExam"), accessorKey: "practiceExam" },
+            { header: t("Leo.status"), accessorKey: "status" },
+            { header: t("licenseExams.categories"), accessorKey: "categories" },
+            { header: t("Leo.license"), accessorKey: "license" },
+            { header: common("createdAt"), accessorKey: "createdAt" },
+            hasManagePermissions ? { header: common("actions"), accessorKey: "actions" } : null,
+          ]}
+        />
       )}
 
       <AlertModal

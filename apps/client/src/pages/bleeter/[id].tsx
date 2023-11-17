@@ -6,7 +6,7 @@ import { handleRequest } from "lib/fetch";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
 import { useTranslations } from "use-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import useFetch from "lib/useFetch";
 import { useRouter } from "next/router";
@@ -16,6 +16,10 @@ import { Title } from "components/shared/Title";
 import { dataToSlate, Editor } from "components/editor/editor";
 import type { DeleteBleeterByIdData, GetBleeterByIdData } from "@snailycad/types/api";
 import { ImageWrapper } from "components/shared/image-wrapper";
+import Link from "next/link";
+import { classNames } from "lib/classNames";
+import { usePermission } from "hooks/usePermission";
+import { defaultPermissions } from "@snailycad/permissions";
 
 const ManageBleetModal = dynamic(
   async () => (await import("components/bleeter/manage-bleet-modal")).ManageBleetModal,
@@ -33,11 +37,14 @@ interface Props {
 export default function BleetPost({ post }: Props) {
   const { state, execute } = useFetch();
   const { user } = useAuth();
-  const { openModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Bleeter");
   const router = useRouter();
   const { makeImageUrl } = useImageUrl();
+
+  const { hasPermissions } = usePermission();
+  const hasManagePermissions = hasPermissions(defaultPermissions.defaultManagementPermissions);
 
   async function handleDelete() {
     const { json } = await execute<DeleteBleeterByIdData>({
@@ -58,22 +65,40 @@ export default function BleetPost({ post }: Props) {
       </Breadcrumbs>
 
       <header className="flex items-center justify-between pb-2 border-b-2">
-        <Title className="!mb-0">{post.title}</Title>
+        <div className="flex flex-col">
+          <Title className="!mb-0 !font-bold">{post.title}</Title>
+          <h2
+            className={classNames(
+              "font-medium dark:text-gray-400 text-neutral-700 text-lg",
+              post.creator && "underline",
+            )}
+          >
+            {post.creator ? (
+              <Link href={`/bleeter/@/${post.creator.handle}`}>{post.creator.name}</Link>
+            ) : (
+              post.user.username
+            )}
+          </h2>
+        </div>
 
         <div>
           {user?.id === post.userId ? (
-            <>
-              <Button onPress={() => openModal(ModalIds.ManageBleetModal)} variant="success">
-                {common("edit")}
-              </Button>
-              <Button
-                onPress={() => openModal(ModalIds.AlertDeleteBleet)}
-                className="ml-2"
-                variant="danger"
-              >
-                {common("delete")}
-              </Button>
-            </>
+            <Button
+              onPress={() => modalState.openModal(ModalIds.ManageBleetModal)}
+              variant="success"
+            >
+              {common("edit")}
+            </Button>
+          ) : null}
+
+          {user?.id === post.userId || hasManagePermissions ? (
+            <Button
+              onPress={() => modalState.openModal(ModalIds.AlertDeleteBleet)}
+              className="ml-2"
+              variant="danger"
+            >
+              {common("delete")}
+            </Button>
           ) : null}
         </div>
       </header>

@@ -1,14 +1,13 @@
-import type * as React from "react";
-import { QualificationValueType, UnitQualification } from "@snailycad/types";
-import { Button } from "@snailycad/ui";
+import * as React from "react";
+import { QualificationValueType, type UnitQualification } from "@snailycad/types";
+import { Button, FullDate } from "@snailycad/ui";
 import { AlertModal } from "components/modal/AlertModal";
 import { Table, useTableState } from "components/shared/Table";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { AddQualificationsModal } from "./AddQualificationsModal";
-import { FullDate } from "components/shared/FullDate";
 import { QualificationsHoverCard } from "./QualificationHoverCard";
 import type {
   DeleteManageUnitQualificationData,
@@ -21,20 +20,24 @@ interface Props {
   hasManagePermissions: boolean;
   unit: GetManageUnitByIdData;
   setUnit: React.Dispatch<React.SetStateAction<GetManageUnitByIdData>>;
+  areFormFieldsDisabled: boolean;
 }
 
-export function QualificationsTable({ hasManagePermissions, setUnit, unit }: Props) {
+export function QualificationsTable({
+  hasManagePermissions,
+  areFormFieldsDisabled,
+  setUnit,
+  unit,
+}: Props) {
   const t = useTranslations("Leo");
-  const { openModal } = useModal();
+  const modalState = useModal();
 
   const awards =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     unit.qualifications?.filter(
       (v) => v.qualification.qualificationType === QualificationValueType.AWARD,
     ) ?? [];
 
   const qualifications =
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     unit.qualifications?.filter(
       (v) => v.qualification.qualificationType === QualificationValueType.QUALIFICATION,
     ) ?? [];
@@ -48,7 +51,10 @@ export function QualificationsTable({ hasManagePermissions, setUnit, unit }: Pro
           <div>
             <Button
               onPress={() =>
-                openModal(ModalIds.ManageUnitQualifications, QualificationValueType.QUALIFICATION)
+                modalState.openModal(
+                  ModalIds.ManageUnitQualifications,
+                  QualificationValueType.QUALIFICATION,
+                )
               }
             >
               {t("addQualification")}
@@ -59,7 +65,11 @@ export function QualificationsTable({ hasManagePermissions, setUnit, unit }: Pro
         {!qualifications.length ? (
           <p className="my-2 text-neutral-700 dark:text-gray-400">{t("noQualifications")}</p>
         ) : (
-          <QualificationAwardsTable setUnit={setUnit} unit={{ ...unit, qualifications }} />
+          <QualificationAwardsTable
+            areFormFieldsDisabled={areFormFieldsDisabled}
+            setUnit={setUnit}
+            unit={{ ...unit, qualifications }}
+          />
         )}
       </div>
 
@@ -68,8 +78,12 @@ export function QualificationsTable({ hasManagePermissions, setUnit, unit }: Pro
           <h2 className="text-xl font-semibold">{t("unitAwards")}</h2>
           <div>
             <Button
+              isDisabled={areFormFieldsDisabled}
               onPress={() =>
-                openModal(ModalIds.ManageUnitQualifications, QualificationValueType.AWARD)
+                modalState.openModal(
+                  ModalIds.ManageUnitQualifications,
+                  QualificationValueType.AWARD,
+                )
               }
             >
               {t("addAward")}
@@ -80,33 +94,43 @@ export function QualificationsTable({ hasManagePermissions, setUnit, unit }: Pro
         {!awards.length ? (
           <p className="my-2 text-neutral-700 dark:text-gray-400">{t("noAwards")}</p>
         ) : (
-          <QualificationAwardsTable setUnit={setUnit} unit={{ ...unit, qualifications: awards }} />
+          <QualificationAwardsTable
+            areFormFieldsDisabled={areFormFieldsDisabled}
+            setUnit={setUnit}
+            unit={{ ...unit, qualifications: awards }}
+          />
         )}
       </div>
 
-      <AddQualificationsModal setUnit={setUnit} unit={unit} />
+      {areFormFieldsDisabled ? null : <AddQualificationsModal setUnit={setUnit} unit={unit} />}
     </div>
   );
 }
 
-function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermissions">) {
+function QualificationAwardsTable({
+  unit,
+  areFormFieldsDisabled,
+  setUnit,
+}: Omit<Props, "hasManagePermissions">) {
   const [tempQualification, qualificationState] = useTemporaryItem(unit.qualifications);
 
   const tableState = useTableState();
   const t = useTranslations("Leo");
   const common = useTranslations("Common");
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
 
   function handleDeleteClick(qualification: UnitQualification) {
     qualificationState.setTempId(qualification.id);
-    openModal(ModalIds.AlertDeleteUnitQualification);
+    modalState.openModal(ModalIds.AlertDeleteUnitQualification);
   }
 
   async function handleSuspendOrUnsuspend(
     type: "suspend" | "unsuspend",
     qualification: UnitQualification,
   ) {
+    if (areFormFieldsDisabled) return;
+
     const { json } = await execute<PutManageUnitQualificationData>({
       path: `/admin/manage/units/${unit.id}/qualifications/${qualification.id}`,
       method: "PUT",
@@ -128,7 +152,7 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
   }
 
   async function handleDelete() {
-    if (!tempQualification) return;
+    if (!tempQualification || areFormFieldsDisabled) return;
 
     const { json } = await execute<DeleteManageUnitQualificationData>({
       path: `/admin/manage/units/${unit.id}/qualifications/${tempQualification.id}`,
@@ -141,7 +165,7 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
         qualifications: p.qualifications.filter((v) => v.id !== tempQualification.id),
       }));
       qualificationState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteUnitQualification);
+      modalState.closeModal(ModalIds.AlertDeleteUnitQualification);
     }
   }
 
@@ -160,7 +184,7 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
                 {qa.suspendedAt ? (
                   <Button
                     onPress={() => handleSuspendOrUnsuspend("unsuspend", qa)}
-                    disabled={state === "loading"}
+                    isDisabled={areFormFieldsDisabled || state === "loading"}
                     size="xs"
                     variant="success"
                   >
@@ -168,7 +192,7 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
                   </Button>
                 ) : (
                   <Button
-                    disabled={state === "loading"}
+                    isDisabled={areFormFieldsDisabled || state === "loading"}
                     onPress={() => handleSuspendOrUnsuspend("suspend", qa)}
                     size="xs"
                     variant="amber"
@@ -177,7 +201,7 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
                   </Button>
                 )}
                 <Button
-                  disabled={state === "loading"}
+                  isDisabled={areFormFieldsDisabled || state === "loading"}
                   onPress={() => handleDeleteClick(qa)}
                   className="ml-2"
                   size="xs"
@@ -196,14 +220,15 @@ function QualificationAwardsTable({ unit, setUnit }: Omit<Props, "hasManagePermi
           { header: common("actions"), accessorKey: "actions" },
         ]}
       />
-
-      <AlertModal
-        title={t("deleteQualification")}
-        description={t("alert_deleteQualification")}
-        id={ModalIds.AlertDeleteUnitQualification}
-        onDeleteClick={handleDelete}
-        state={state}
-      />
+      {areFormFieldsDisabled ? null : (
+        <AlertModal
+          title={t("deleteQualification")}
+          description={t("alert_deleteQualification")}
+          id={ModalIds.AlertDeleteUnitQualification}
+          onDeleteClick={handleDelete}
+          state={state}
+        />
+      )}
     </div>
   );
 }

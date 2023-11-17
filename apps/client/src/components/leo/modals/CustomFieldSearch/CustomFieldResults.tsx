@@ -4,10 +4,10 @@ import { Button } from "@snailycad/ui";
 import { Table, useTableState } from "components/shared/Table";
 import { useModal } from "state/modalState";
 import { useTranslations } from "next-intl";
-import { NameSearchResult, useNameSearch } from "state/search/name-search-state";
-import { useVehicleSearch, VehicleSearchResult } from "state/search/vehicle-search-state";
-import { useWeaponSearch, WeaponSearchResult } from "state/search/weapon-search-state";
-import { ModalIds } from "types/ModalIds";
+import { type NameSearchResult, useNameSearch } from "state/search/name-search-state";
+import { useVehicleSearch, type VehicleSearchResult } from "state/search/vehicle-search-state";
+import { useWeaponSearch, type WeaponSearchResult } from "state/search/weapon-search-state";
+import { ModalIds } from "types/modal-ids";
 import type { CustomFieldResults } from "./CustomFieldSearch";
 
 interface Props {
@@ -44,7 +44,7 @@ export function CustomFieldResults({ results }: Props) {
 }
 
 function CitizenResults({ results }: any) {
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const setCurrentResult = useNameSearch((state) => state.setCurrentResult);
   const t = useTranslations("Leo");
   const common = useTranslations("Common");
@@ -53,8 +53,8 @@ function CitizenResults({ results }: any) {
   const citizens = results as NameSearchResult[];
 
   function handleOpen(citizen: any) {
-    closeModal(ModalIds.CustomFieldSearch);
-    openModal(ModalIds.NameSearch, {
+    modalState.closeModal(ModalIds.CustomFieldSearch);
+    modalState.openModal(ModalIds.NameSearch, {
       ...citizen,
       name: `${citizen.name} ${citizen.surname}`,
     });
@@ -63,6 +63,7 @@ function CitizenResults({ results }: any) {
 
   return (
     <Table
+      features={{ isWithinCardOrModal: true }}
       tableState={tableState}
       data={citizens.map((result) => ({
         id: result.id,
@@ -82,7 +83,7 @@ function CitizenResults({ results }: any) {
 }
 
 function WeaponResults({ results }: any) {
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const setCurrentResult = useWeaponSearch((state) => state.setCurrentResult);
   const t = useTranslations();
   const tableState = useTableState();
@@ -90,8 +91,8 @@ function WeaponResults({ results }: any) {
   const citizens = results as NonNullable<WeaponSearchResult>[];
 
   function handleOpen(weapon: any) {
-    closeModal(ModalIds.CustomFieldSearch);
-    openModal(ModalIds.WeaponSearch);
+    modalState.closeModal(ModalIds.CustomFieldSearch);
+    modalState.openModal(ModalIds.WeaponSearch);
     setCurrentResult(weapon);
   }
 
@@ -118,7 +119,7 @@ function WeaponResults({ results }: any) {
 }
 
 function VehicleResults({ results }: any) {
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const setCurrentResult = useVehicleSearch((state) => state.setCurrentResult);
   const t = useTranslations();
   const tableState = useTableState();
@@ -126,8 +127,8 @@ function VehicleResults({ results }: any) {
   const citizens = results as VehicleSearchResult[];
 
   function handleOpen(vehicle: any) {
-    closeModal(ModalIds.CustomFieldSearch);
-    openModal(ModalIds.VehicleSearch);
+    modalState.closeModal(ModalIds.CustomFieldSearch);
+    modalState.openModal(ModalIds.VehicleSearch);
     setCurrentResult(vehicle);
   }
 

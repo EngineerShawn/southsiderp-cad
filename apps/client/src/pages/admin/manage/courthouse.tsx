@@ -1,5 +1,4 @@
 import { defaultPermissions } from "@snailycad/permissions";
-import { Rank } from "@snailycad/types";
 import type {
   GetManageExpungementRequests,
   GetManageNameChangeRequests,
@@ -16,6 +15,8 @@ import { getTranslations } from "lib/getTranslation";
 import { requestAll } from "lib/utils";
 import type { GetServerSideProps } from "next";
 import { useTranslations } from "next-intl";
+import { useFeatureEnabled } from "hooks/useFeatureEnabled";
+import { CourthouseType } from "@snailycad/types";
 
 interface Props {
   expungementRequests: GetManageExpungementRequests;
@@ -25,26 +26,32 @@ interface Props {
 export default function ManageCourthouse({ expungementRequests, nameChangeRequests }: Props) {
   const { hasPermissions } = usePermission();
   const t = useTranslations("Management");
+  const { options } = useFeatureEnabled();
 
-  const hasNameChangePerms = hasPermissions(
-    [Permissions.ViewNameChangeRequests, Permissions.ManageNameChangeRequests],
-    true,
-  );
+  const hasNameChangePerms = hasPermissions([
+    Permissions.ViewNameChangeRequests,
+    Permissions.ManageNameChangeRequests,
+  ]);
 
-  const hasExpungementPerms = hasPermissions(
-    [Permissions.ViewExpungementRequests, Permissions.ManageExpungementRequests],
-    true,
-  );
+  const hasExpungementPerms = hasPermissions([
+    Permissions.ViewExpungementRequests,
+    Permissions.ManageExpungementRequests,
+  ]);
 
-  const hasManageWarrantPerms = hasPermissions([Permissions.ManagePendingWarrants], true);
+  const enabledTypes = options.COURTHOUSE;
+
+  const expungementRequestsEnabled = enabledTypes.includes(CourthouseType.EXPUNGEMENT_REQUEST);
+  const nameChangeRequestsEnabled = enabledTypes.includes(CourthouseType.NAME_CHANGE_REQUEST);
+
+  const hasManageWarrantPerms = hasPermissions([Permissions.ManagePendingWarrants]);
 
   const TABS = [];
 
-  if (hasExpungementPerms) {
+  if (hasExpungementPerms && expungementRequestsEnabled) {
     TABS.push({ value: "expungement-requests", name: t("MANAGE_EXPUNGEMENT_REQUESTS") });
   }
 
-  if (hasNameChangePerms) {
+  if (hasNameChangePerms && nameChangeRequestsEnabled) {
     TABS.push({ value: "name-change-requests", name: t("MANAGE_NAME_CHANGE_REQUESTS") });
   }
 
@@ -55,7 +62,6 @@ export default function ManageCourthouse({ expungementRequests, nameChangeReques
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: defaultPermissions.defaultCourthousePermissions,
       }}
     >

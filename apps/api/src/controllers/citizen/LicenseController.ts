@@ -1,4 +1,4 @@
-import { cad, Feature, User } from "@prisma/client";
+import { type cad, Feature, type User } from "@prisma/client";
 import { LICENSE_SCHEMA } from "@snailycad/schemas";
 import { UseBeforeEach, Context, BodyParams, PathParams } from "@tsed/common";
 import { Controller } from "@tsed/di";
@@ -7,10 +7,10 @@ import { ContentType, Description, Put } from "@tsed/schema";
 import { canManageInvariant } from "lib/auth/getSessionUser";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
-import { updateCitizenLicenseCategories } from "lib/citizen/licenses";
-import { isFeatureEnabled } from "lib/cad";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { updateCitizenLicenseCategories } from "lib/citizen/licenses/update-citizen-license-categories";
+import { isFeatureEnabled } from "lib/upsert-cad";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import type * as APITypes from "@snailycad/types/api";
 import { citizenInclude } from "./CitizenController";
 import { IsFeatureEnabled } from "middlewares/is-enabled";
@@ -66,6 +66,8 @@ export class LicensesController {
         pilotLicenseId: suspendedLicenses?.pilotLicense ? undefined : data.pilotLicense,
         weaponLicenseId: suspendedLicenses?.firearmsLicense ? undefined : data.weaponLicense,
         waterLicenseId: suspendedLicenses?.waterLicense ? undefined : data.waterLicense,
+        fishingLicenseId: suspendedLicenses?.fishingLicense ? undefined : data.fishingLicense,
+        huntingLicenseId: suspendedLicenses?.huntingLicense ? undefined : data.huntingLicense,
       },
       include: citizenInclude,
     });

@@ -1,22 +1,19 @@
 import { FormField } from "components/form/FormField";
-import { AsyncListSearchField, Button, Item, Loader, TextField } from "@snailycad/ui";
+import { AsyncListSearchField, Button, Item, Loader, TextField, FormRow } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
-import { Bolo, BoloType, RegisteredVehicle } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
+import { type Bolo, BoloType, type RegisteredVehicle } from "@snailycad/types";
 import { useTranslations } from "use-intl";
 import { CREATE_BOLO_SCHEMA } from "@snailycad/schemas";
 import { useDispatchState } from "state/dispatch/dispatch-state";
 import { PersonFill, ThreeDots } from "react-bootstrap-icons";
-import { FormRow } from "components/form/FormRow";
-import { classNames } from "lib/classNames";
 import { useSSRSafeId } from "@react-aria/ssr";
 import type { PostBolosData, PutBolosData } from "@snailycad/types/api";
 import { CitizenSuggestionsField } from "components/shared/CitizenSuggestionsField";
-import { shallow } from "zustand/shallow";
 import { useInvalidateQuery } from "hooks/use-invalidate-query";
 
 interface Props {
@@ -28,15 +25,12 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
   const { invalidateQuery } = useInvalidateQuery(["/bolos"]);
 
   const common = useTranslations("Common");
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
-  const { bolos, setBolos } = useDispatchState(
-    (state) => ({
-      bolos: state.bolos,
-      setBolos: state.setBolos,
-    }),
-    shallow,
-  );
+  const { bolos, setBolos } = useDispatchState((state) => ({
+    bolos: state.bolos,
+    setBolos: state.setBolos,
+  }));
   const t = useTranslations("Bolos");
   const leo = useTranslations("Leo");
 
@@ -71,7 +65,7 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
             return v;
           }),
         );
-        closeModal(ModalIds.ManageBolo);
+        modalState.closeModal(ModalIds.ManageBolo);
 
         await invalidateQuery();
       }
@@ -86,14 +80,14 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
         await invalidateQuery();
 
         setBolos([json, ...bolos]);
-        closeModal(ModalIds.ManageBolo);
+        modalState.closeModal(ModalIds.ManageBolo);
       }
     }
   }
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.ManageBolo);
+    modalState.closeModal(ModalIds.ManageBolo);
   }
 
   const validate = handleValidate(CREATE_BOLO_SCHEMA);
@@ -113,7 +107,7 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
 
   return (
     <Modal
-      isOpen={isOpen(ModalIds.ManageBolo)}
+      isOpen={modalState.isOpen(ModalIds.ManageBolo)}
       onClose={handleClose}
       title={bolo ? t("editBolo") : t("createBolo")}
       className="w-[600px]"
@@ -127,11 +121,11 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
         {({ setValues, setFieldValue, values, errors, isValid }) => (
           <Form autoComplete="off">
             <FormField errorMessage={errors.type} label={common("type")}>
-              <FormRow>
+              <FormRow useFlex>
                 <Button
                   onPress={() => setFieldValue("type", BoloType.PERSON)}
                   variant={values.type === BoloType.PERSON ? "blue" : "default"}
-                  className={classNames("flex justify-center")}
+                  className="flex justify-center w-full"
                   type="button"
                   title="Person type"
                   aria-label="Person Type"
@@ -142,7 +136,7 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
                 <Button
                   onPress={() => setFieldValue("type", BoloType.VEHICLE)}
                   variant={values.type === BoloType.VEHICLE ? "blue" : "default"}
-                  className={classNames("flex justify-center")}
+                  className="flex justify-center w-full"
                   type="button"
                   title="Vehicle type"
                   aria-label="Vehicle Type"
@@ -162,7 +156,7 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
                 <Button
                   onPress={() => setFieldValue("type", BoloType.OTHER)}
                   variant={values.type === BoloType.OTHER ? "blue" : "default"}
-                  className={classNames("flex justify-center")}
+                  className="flex justify-center w-full"
                   type="button"
                   title="Other type"
                   aria-label="Other Type"
@@ -187,21 +181,23 @@ export function ManageBoloModal({ onClose, bolo }: Props) {
                   }}
                   allowsCustomValue
                   localValue={values.plateSearch}
-                  setValues={({ node, localValue }) => {
-                    const vehicle = node
-                      ? {
-                          plate: node.value.plate,
-                          color: node.value.color,
-                          model: node.value.model.value.value,
-                          vehicleId: node.value.id,
-                        }
-                      : {};
+                  onInputChange={(value) => setFieldValue("plateSearch", value)}
+                  onSelectionChange={(node) => {
+                    if (node?.value) {
+                      const vehicle = node?.value
+                        ? {
+                            plate: node.value.plate,
+                            color: node.value.color,
+                            model: node.value.model.value.value,
+                            vehicleId: node.value.id,
+                          }
+                        : {};
 
-                    setValues({
-                      ...values,
-                      ...vehicle,
-                      plateSearch: localValue ?? node?.value.plate ?? "",
-                    });
+                      setValues({
+                        ...values,
+                        ...vehicle,
+                      });
+                    }
                   }}
                 >
                   {(item) => (

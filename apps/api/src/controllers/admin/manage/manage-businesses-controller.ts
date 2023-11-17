@@ -1,4 +1,4 @@
-import { Prisma, Rank, WhitelistStatus } from "@prisma/client";
+import { type Prisma, WhitelistStatus } from "@prisma/client";
 import { Controller } from "@tsed/di";
 import { NotFound } from "@tsed/exceptions";
 import { UseBeforeEach } from "@tsed/platform-middlewares";
@@ -6,7 +6,7 @@ import { BodyParams, Context, PathParams, QueryParams } from "@tsed/platform-par
 import { ContentType, Delete, Description, Get, Put } from "@tsed/schema";
 import { userProperties } from "lib/auth/getSessionUser";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import type * as APITypes from "@snailycad/types/api";
 import { validateSchema } from "lib/data/validate-schema";
@@ -14,19 +14,14 @@ import { UPDATE_EMPLOYEE_SCHEMA } from "@snailycad/schemas";
 import { EmployeeAsEnum } from "@snailycad/types";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
+import { getPrismaModelOrderBy } from "~/utils/order-by";
 
 const businessInclude = {
-  citizen: {
-    select: {
-      name: true,
-      surname: true,
-      id: true,
-    },
-  },
   user: {
     select: userProperties,
   },
-};
+  employees: { include: { citizen: true }, where: { role: { as: "OWNER" } } },
+} as const;
 
 @UseBeforeEach(IsAuth)
 @Controller("/admin/manage/businesses")
@@ -35,7 +30,6 @@ export class AdminManageBusinessesController {
   @Get("/")
   @Description("Get all the businesses within the CAD")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewBusinesses,
       Permissions.DeleteBusinesses,
@@ -47,34 +41,19 @@ export class AdminManageBusinessesController {
     @QueryParams("skip", Number) skip = 0,
     @QueryParams("includeAll", Boolean) includeAll = false,
     @QueryParams("query", String) query = "",
+    @QueryParams("sorting") sorting = "",
   ): Promise<APITypes.GetManageBusinessesData> {
     const where = {} as Prisma.BusinessWhereInput;
 
-    const [name, surname] = query.toString().toLowerCase().split(/ +/g);
-
     if (query) {
-      where.OR = [
-        { address: { contains: query } },
-        { name: { contains: query } },
-        {
-          citizen: {
-            name: { contains: name, mode: "insensitive" },
-            surname: { contains: surname, mode: "insensitive" },
-          },
-        },
-        {
-          citizen: {
-            name: { contains: surname, mode: "insensitive" },
-            surname: { contains: name, mode: "insensitive" },
-          },
-        },
-      ];
+      where.OR = [{ address: { contains: query } }, { name: { contains: query } }];
     }
 
     if (pendingOnly) {
       where.status = WhitelistStatus.PENDING;
     }
 
+    const orderBy = getPrismaModelOrderBy(sorting);
     const [totalCount, businesses] = await prisma.$transaction([
       prisma.business.count({ where }),
       prisma.business.findMany({
@@ -82,6 +61,7 @@ export class AdminManageBusinessesController {
         skip: includeAll ? undefined : skip,
         where,
         include: businessInclude,
+        orderBy,
       }),
     ]);
 
@@ -91,7 +71,6 @@ export class AdminManageBusinessesController {
   @Get("/:id/employees")
   @Description("Get the employees of a business")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewBusinesses,
       Permissions.DeleteBusinesses,
@@ -107,7 +86,11 @@ export class AdminManageBusinessesController {
       businessId,
     };
 
-    const [totalCount, employees] = await prisma.$transaction([
+    const [business, totalCount, employees] = await prisma.$transaction([
+      prisma.business.findUnique({
+        where: { id: businessId },
+        select: { status: true },
+      }),
       prisma.employee.count({ where }),
       prisma.employee.findMany({
         where,
@@ -120,12 +103,11 @@ export class AdminManageBusinessesController {
       }),
     ]);
 
-    return { totalCount, employees };
+    return { ...business, totalCount, employees };
   }
 
   @Put("/employees/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.DeleteBusinesses, Permissions.ManageBusinesses],
   })
   async updateBusinessEmployee(
@@ -135,14 +117,8 @@ export class AdminManageBusinessesController {
   ) {
     const data = validateSchema(UPDATE_EMPLOYEE_SCHEMA, body);
     const employee = await prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        NOT: { role: { as: EmployeeAsEnum.OWNER } },
-      },
-      include: {
-        citizen: true,
-        role: { include: { value: true } },
-      },
+      where: { id: employeeId },
+      include: { citizen: true, role: { include: { value: true } } },
     });
 
     if (!employee) {
@@ -155,8 +131,8 @@ export class AdminManageBusinessesController {
       },
     });
 
-    if (!role || role.as === EmployeeAsEnum.OWNER) {
-      throw new ExtendedBadRequest({ roleId: "cannotSetRoleToOwner" });
+    if (!role) {
+      throw new ExtendedBadRequest({ roleId: "roleNotFound" });
     }
 
     const updated = await prisma.employee.update({
@@ -165,6 +141,8 @@ export class AdminManageBusinessesController {
         employeeOfTheMonth: data.employeeOfTheMonth,
         canCreatePosts: data.canCreatePosts,
         roleId: role.id,
+        canManageEmployees: data.canManageEmployees,
+        canManageVehicles: data.canManageVehicles,
       },
       include: {
         citizen: true,
@@ -187,7 +165,6 @@ export class AdminManageBusinessesController {
 
   @Delete("/employees/:id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.DeleteBusinesses, Permissions.ManageBusinesses],
   })
   async fireEmployee(
@@ -232,7 +209,6 @@ export class AdminManageBusinessesController {
   @Put("/:id")
   @Description("Update a business by its id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageBusinesses],
   })
   async updateBusiness(
@@ -271,7 +247,6 @@ export class AdminManageBusinessesController {
   @Delete("/:id")
   @Description("Delete a business by its id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.DeleteBusinesses],
   })
   async deleteBusiness(

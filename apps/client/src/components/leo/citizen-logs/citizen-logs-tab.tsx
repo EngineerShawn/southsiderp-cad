@@ -1,9 +1,8 @@
 import * as React from "react";
 import { useTranslations } from "use-intl";
-import { buttonSizes, buttonVariants, TabsContent } from "@snailycad/ui";
+import { buttonVariants, TabsContent } from "@snailycad/ui";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import Link from "next/link";
-import { classNames } from "lib/classNames";
 import { SearchArea } from "components/shared/search/search-area";
 import type { GetManageRecordLogsData } from "@snailycad/types/api";
 
@@ -33,34 +32,32 @@ export function CitizenLogsTab({ citizens }: Props) {
 
   return (
     <TabsContent value="citizen-logs-tab">
+      <SearchArea totalCount={0} asyncTable={asyncTable} search={{ setSearch, search }} />
+
       {asyncTable.noItemsAvailable ? (
         <p className="mt-5">{t("noCitizenLogs")}</p>
       ) : (
-        <>
-          <SearchArea totalCount={0} asyncTable={asyncTable} search={{ setSearch, search }} />
-
-          <Table
-            tableState={tableState}
-            data={asyncTable.items.map((citizen) => {
-              return {
-                id: citizen.id,
-                citizen: `${citizen.name} ${citizen.surname}`,
-                actions: (
-                  <Link
-                    className={classNames("rounded-md", buttonSizes.xs, buttonVariants.default)}
-                    href={`/officer/supervisor/citizen-logs/${citizen.id}`}
-                  >
-                    {common("view")}
-                  </Link>
-                ),
-              };
-            })}
-            columns={[
-              { header: t("citizen"), accessorKey: "citizen" },
-              { header: common("actions"), accessorKey: "actions" },
-            ]}
-          />
-        </>
+        <Table
+          tableState={tableState}
+          data={asyncTable.items.map((citizen) => {
+            return {
+              id: citizen.id,
+              citizen: `${citizen.name} ${citizen.surname}`,
+              actions: (
+                <Link
+                  className={buttonVariants({ size: "xs" })}
+                  href={`/officer/supervisor/citizen-logs/${citizen.id}`}
+                >
+                  {common("view")}
+                </Link>
+              ),
+            };
+          })}
+          columns={[
+            { header: t("citizen"), accessorKey: "citizen" },
+            { header: common("actions"), accessorKey: "actions" },
+          ]}
+        />
       )}
     </TabsContent>
   );

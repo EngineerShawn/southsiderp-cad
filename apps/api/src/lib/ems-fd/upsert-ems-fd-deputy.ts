@@ -1,25 +1,26 @@
 import type { ZodSchema } from "zod";
 import {
-  cad,
-  Citizen,
-  EmsFdDeputy,
+  type cad,
+  type Citizen,
+  type EmsFdDeputy,
   Feature,
-  LeoWhitelistStatus,
-  MiscCadSettings,
+  type LeoWhitelistStatus,
+  type MiscCadSettings,
   ShouldDoType,
-  User,
+  type User,
+  WhatPages,
 } from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { EMS_FD_DEPUTY_SCHEMA } from "@snailycad/schemas";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { prisma } from "lib/data/prisma";
 import { validateMaxDepartmentsEachPerUser } from "lib/leo/utils";
 import { validateDuplicateCallsigns } from "lib/leo/validateDuplicateCallsigns";
 import { handleWhitelistStatus } from "lib/leo/handleWhitelistStatus";
 import { findNextAvailableIncremental } from "lib/leo/findNextAvailableIncremental";
-import { unitProperties } from "lib/leo/activeOfficer";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { unitProperties } from "utils/leo/includes";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import { NotFound } from "@tsed/exceptions";
 import { validateImageURL } from "lib/images/validate-image-url";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
@@ -49,8 +50,8 @@ export async function upsertEmsFdDeputy(options: UpsertEmsFdDeputyOptions) {
     features: options.cad.features,
   });
 
-  if (isBadgeNumbersEnabled && !data.badgeNumber) {
-    throw new ExtendedBadRequest({ badgeNumber: "Required" });
+  if (isBadgeNumbersEnabled && !data.badgeNumberString) {
+    throw new ExtendedBadRequest({ badgeNumberString: "Required" });
   }
 
   if (divisionsEnabled) {
@@ -76,11 +77,18 @@ export async function upsertEmsFdDeputy(options: UpsertEmsFdDeputyOptions) {
     });
   }
 
+  const allowMultipleUnitsWithSameDeptPerUser = isFeatureEnabled({
+    feature: Feature.ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER,
+    defaultReturn: false,
+    features: options.cad.features,
+  });
+
   await validateDuplicateCallsigns({
     callsign1: data.callsign,
     callsign2: data.callsign2,
     type: "ems-fd",
     unitId: options.existingDeputy?.id,
+    userId: allowMultipleUnitsWithSameDeptPerUser ? options.user?.id : undefined,
   });
 
   const citizen = await upsertEmsFdCitizen({ ...options, data });
@@ -102,7 +110,10 @@ export async function upsertEmsFdDeputy(options: UpsertEmsFdDeputyOptions) {
   let statusId: string | undefined;
   if (!options.user) {
     const onDutyStatus = await prisma.statusValue.findFirst({
-      where: { shouldDo: ShouldDoType.SET_ON_DUTY },
+      where: {
+        shouldDo: ShouldDoType.SET_ON_DUTY,
+        OR: [{ whatPages: { isEmpty: true } }, { whatPages: { has: WhatPages.EMS_FD } }],
+      },
     });
 
     statusId = onDutyStatus?.id;
@@ -116,7 +127,7 @@ export async function upsertEmsFdDeputy(options: UpsertEmsFdDeputyOptions) {
     departmentId: defaultDepartment ? defaultDepartment.id : data.department,
     rankId: rank,
     divisionId: data.division || null,
-    badgeNumber: data.badgeNumber,
+    badgeNumberString: data.badgeNumberString,
     citizenId: citizen.id,
     incremental,
     whitelistStatusId,
@@ -145,6 +156,10 @@ export async function upsertEmsFdDeputy(options: UpsertEmsFdDeputyOptions) {
 async function upsertEmsFdCitizen(
   options: Omit<UpsertEmsFdDeputyOptions, "body" | "schema"> & { data: any },
 ) {
+  if (options.citizen) {
+    return options.citizen;
+  }
+
   // means the ems-fd deputy that is being created is a temporary unit
   let citizen: { id: string; userId: string | null } | null = options.existingDeputy?.citizenId
     ? { id: options.existingDeputy.citizenId, userId: options.existingDeputy.userId }
@@ -152,6 +167,7 @@ async function upsertEmsFdCitizen(
 
   if (!citizen) {
     if (!options.user) {
+      // temporary unit's citizen
       citizen = await prisma.citizen.create({
         data: {
           address: "",
@@ -170,15 +186,13 @@ async function upsertEmsFdCitizen(
         cad: options.cad,
         user: options.user,
       });
-      citizen =
-        options.citizen ??
-        (await prisma.citizen.findFirst({
-          where: {
-            id: options.data.citizenId,
-            userId: checkCitizenUserId ? options.user.id : undefined,
-          },
-          select: { userId: true, id: true },
-        }));
+      citizen = await prisma.citizen.findFirst({
+        where: {
+          id: options.data.citizenId,
+          userId: checkCitizenUserId ? options.user.id : undefined,
+        },
+        select: { userId: true, id: true },
+      });
     }
   }
 

@@ -8,12 +8,12 @@ import type {
 } from "@snailycad/types";
 import { useDebounce, useHoverDirty } from "react-use";
 import { isUnitCombined, isUnitCombinedEmsFd } from "@snailycad/utils";
-import { HoverCard } from "components/shared/HoverCard";
 import useFetch from "lib/useFetch";
-import { create } from "zustand";
-import { Loader } from "@snailycad/ui";
+import { HoverCard, HoverCardContent, HoverCardTrigger, Loader } from "@snailycad/ui";
 import type { GetUnitQualificationsByUnitIdData } from "@snailycad/types/api";
 import dynamic from "next/dynamic";
+import { createWithEqualityFn } from "zustand/traditional";
+import { shallow } from "zustand/shallow";
 
 const UnitQualificationsTable = dynamic(
   async () => (await import("./UnitQualificationsTable")).UnitQualificationsTable,
@@ -34,10 +34,13 @@ interface CacheStore {
   setUnits(units: CacheStore["units"]): void;
 }
 
-const useCacheStore = create<CacheStore>((set) => ({
-  units: {},
-  setUnits: (units) => set({ units }),
-}));
+const useCacheStore = createWithEqualityFn<CacheStore>(
+  (set) => ({
+    units: {},
+    setUnits: (units) => set({ units }),
+  }),
+  shallow,
+);
 
 export function ActiveUnitsQualificationsCard({ canBeOpened = true, unit, children }: Props) {
   const { state, execute } = useFetch();
@@ -81,20 +84,20 @@ export function ActiveUnitsQualificationsCard({ canBeOpened = true, unit, childr
   }
 
   return (
-    <HoverCard
-      openDelay={500}
-      showArrow={false}
-      contentProps={{ sideOffset: 0, side: "bottom" }}
-      pointerEvents
-      trigger={<span ref={hoverRef}>{children}</span>}
-    >
-      {state === "loading" ? (
-        <Loader />
-      ) : (
-        <div className="min-w-[450px]">
-          <UnitQualificationsTable unit={{ ...unit, qualifications: cache ?? [] }} />
-        </div>
-      )}
+    <HoverCard openDelay={500}>
+      <HoverCardTrigger asChild>
+        <span ref={hoverRef}>{children}</span>
+      </HoverCardTrigger>
+
+      <HoverCardContent sideOffset={0} side="bottom" pointerEvents>
+        {state === "loading" ? (
+          <Loader />
+        ) : (
+          <div className="min-w-[450px]">
+            <UnitQualificationsTable unit={{ ...unit, qualifications: cache ?? [] }} />
+          </div>
+        )}
+      </HoverCardContent>
     </HoverCard>
   );
 }

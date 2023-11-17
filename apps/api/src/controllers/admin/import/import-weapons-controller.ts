@@ -6,11 +6,11 @@ import {
   BodyParams,
   MultipartFile,
   PathParams,
-  PlatformMulterFile,
+  type PlatformMulterFile,
   QueryParams,
   UseBeforeEach,
 } from "@tsed/common";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { parseImportFile } from "utils/file";
 import { validateSchema } from "lib/data/validate-schema";
 import { generateString } from "utils/generate-string";
@@ -18,7 +18,6 @@ import { citizenInclude } from "controllers/citizen/CitizenController";
 import type { Prisma } from "@prisma/client";
 import type * as APITypes from "@snailycad/types/api";
 import { Permissions, UsePermissions } from "middlewares/use-permissions";
-import { Rank } from "@snailycad/types";
 
 const weaponsInclude = { ...citizenInclude.weapons.include, citizen: true };
 
@@ -29,7 +28,6 @@ export class ImportWeaponsController {
   @Get("/")
   @Description("Get all the Weapons in the CAD (paginated)")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportRegisteredWeapons, Permissions.ManageCitizens],
   })
   async getWeapons(
@@ -62,7 +60,6 @@ export class ImportWeaponsController {
   @Post("/")
   @Description("Import weapons in the CAD via body data")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportRegisteredWeapons],
   })
   async importWeaponsViaBodyData(@BodyParams() body: any): Promise<APITypes.PostImportWeaponsData> {
@@ -72,11 +69,10 @@ export class ImportWeaponsController {
   @Get("/random")
   @Description("Get a random weapon")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportRegisteredWeapons, Permissions.ManageCitizens],
   })
   async getRandomWeapon(@QueryParams("userRegisteredOnly", Boolean) userRegisteredOnly?: boolean) {
-    const where: Prisma.CitizenWhereInput = {};
+    const where: Prisma.WeaponWhereInput = {};
     if (typeof userRegisteredOnly === "boolean") {
       where.userId = userRegisteredOnly ? { not: { equals: null } } : { equals: null };
     }
@@ -97,7 +93,6 @@ export class ImportWeaponsController {
   @Post("/file")
   @Description("Import weapons in the CAD via file upload")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportRegisteredWeapons],
   })
   async importWeaponsViaFile(
@@ -110,7 +105,6 @@ export class ImportWeaponsController {
   @Delete("/:id")
   @Description("Delete a registered weapon by its id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.DeleteRegisteredWeapons],
   })
   async deleteWeapon(@PathParams("id") id: string): Promise<APITypes.DeleteImportWeaponsData> {
@@ -123,17 +117,18 @@ export class ImportWeaponsController {
 export async function importWeaponsHandler(body: unknown[]) {
   const data = validateSchema(WEAPON_SCHEMA_ARR, body);
 
-  return Promise.all(
-    data.map(async (data) => {
-      return prisma.weapon.create({
+  return prisma.$transaction(
+    data.map((weapon) =>
+      prisma.weapon.create({
         data: {
-          citizenId: data.ownerId,
-          registrationStatusId: data.registrationStatusId,
-          modelId: data.modelId,
+          userId: weapon.userId,
+          citizenId: weapon.ownerId,
+          registrationStatusId: weapon.registrationStatusId,
+          modelId: weapon.modelId,
           serialNumber: generateString(10),
         },
         include: weaponsInclude,
-      });
-    }),
+      }),
+    ),
   );
 }

@@ -4,7 +4,7 @@ import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import type { PenalCodeGroup } from "@snailycad/types";
 import type { PutPenalCodeGroupsData, PostPenalCodeGroupsData } from "@snailycad/types/api";
 
@@ -16,15 +16,16 @@ interface Props {
 }
 
 export function ManagePenalCodeGroup({ onCreate, onUpdate, onClose, group }: Props) {
-  const { closeModal, isOpen } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
   const common = useTranslations("Common");
+  const t = useTranslations("Values");
 
   const footerTitle = group ? common("save") : common("create");
-  const title = group ? "Manage Group" : "Add Group";
+  const title = group ? t("manageGroup") : t("addGroup");
 
   function handleClose() {
-    closeModal(ModalIds.ManagePenalCodeGroup);
+    modalState.closeModal(ModalIds.ManagePenalCodeGroup);
     onClose?.();
   }
 
@@ -63,7 +64,7 @@ export function ManagePenalCodeGroup({ onCreate, onUpdate, onClose, group }: Pro
       className="w-[650px]"
       title={title}
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.ManagePenalCodeGroup)}
+      isOpen={modalState.isOpen(ModalIds.ManagePenalCodeGroup)}
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
         {({ setFieldValue, values, errors }) => (
@@ -72,14 +73,14 @@ export function ManagePenalCodeGroup({ onCreate, onUpdate, onClose, group }: Pro
               errorMessage={errors.name}
               autoFocus
               isRequired
-              label="Name"
+              label={common("name")}
               value={values.name}
               onChange={(value) => setFieldValue("name", value)}
             />
 
             <footer className="flex justify-end mt-5">
               <Button type="reset" onPress={handleClose} variant="cancel">
-                Cancel
+                {common("cancel")}
               </Button>
               <Button className="flex items-center" disabled={state === "loading"} type="submit">
                 {state === "loading" ? <Loader className="mr-2" /> : null}

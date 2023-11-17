@@ -1,14 +1,15 @@
-import type { cad, Feature, User } from "@prisma/client";
+import { User } from "@prisma/client";
+import type { cad, Feature } from "@prisma/client";
 import { MEDICAL_RECORD_SCHEMA } from "@snailycad/schemas";
 import { UseBeforeEach, Context, BodyParams, PathParams } from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { NotFound } from "@tsed/exceptions";
 import { ContentType, Delete, Description, Post, Put } from "@tsed/schema";
 import { canManageInvariant } from "lib/auth/getSessionUser";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import type * as APITypes from "@snailycad/types/api";
 
 @Controller("/medical-records")
@@ -43,6 +44,7 @@ export class MedicalRecordsController {
         userId: user.id || undefined,
         type: data.type,
         description: data.description,
+        descriptionData: data.descriptionData || undefined,
         bloodGroupId: data.bloodGroup || null,
       },
       include: {
@@ -89,6 +91,7 @@ export class MedicalRecordsController {
         description: data.description,
         type: data.type,
         bloodGroupId: data.bloodGroup || null,
+        descriptionData: data.descriptionData || undefined,
       },
       include: {
         bloodGroup: true,

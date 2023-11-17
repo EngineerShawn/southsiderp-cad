@@ -1,4 +1,4 @@
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { useTranslations } from "use-intl";
 
 import { Loader, Input, Button, TextField } from "@snailycad/ui";
@@ -6,14 +6,14 @@ import { FormField } from "components/form/FormField";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { handleValidate } from "lib/handleValidate";
 import { BLEETER_SCHEMA } from "@snailycad/schemas";
 import { CropImageModal } from "components/modal/CropImageModal";
 import { dataToSlate, Editor } from "components/editor/editor";
 import type {
   GetBleeterByIdData,
-  PostBleeterByIdData,
+  PostBleeterData,
   PostBleeterByIdImageData,
   PutBleeterByIdData,
 } from "@snailycad/types/api";
@@ -22,13 +22,13 @@ import { useRouter } from "next/router";
 interface Props {
   post: GetBleeterByIdData | null;
 
-  onCreate?(bleet: PostBleeterByIdData & { isNew?: boolean }): void;
+  onCreate?(bleet: PostBleeterData & { isNew?: boolean }): void;
   onUpdate?(bleet: PutBleeterByIdData): void;
 }
 
 export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
   const { state, execute } = useFetch();
-  const { openModal, isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Bleeter");
   const common = useTranslations("Common");
   const router = useRouter();
@@ -36,7 +36,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
 
   function onCropSuccess(url: Blob, filename: string, setImage: any) {
     setImage(new File([url], filename, { type: url.type }));
-    closeModal(ModalIds.CropImageModal);
+    modalState.closeModal(ModalIds.CropImageModal);
   }
 
   async function onSubmit(
@@ -59,7 +59,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
         onUpdate?.(json);
       }
     } else {
-      const data = await execute<PostBleeterByIdData, typeof INITIAL_VALUES>({
+      const data = await execute<PostBleeterData, typeof INITIAL_VALUES>({
         path: "/bleeter",
         method: "POST",
         data: values,
@@ -73,7 +73,6 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (json.id && values.image) {
       const fd = new FormData();
 
@@ -102,7 +101,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
   }
 
   function handleClose() {
-    closeModal(ModalIds.ManageBleetModal);
+    modalState.closeModal(ModalIds.ManageBleetModal);
   }
 
   const validate = handleValidate(BLEETER_SCHEMA);
@@ -117,7 +116,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
     <Modal
       title={post ? t("editBleet") : t("createBleet")}
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.ManageBleetModal)}
+      isOpen={modalState.isOpen(ModalIds.ManageBleetModal)}
       className="w-[700px]"
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
@@ -137,7 +136,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
                   className="mr-2"
                   type="button"
                   onPress={() => {
-                    openModal(ModalIds.CropImageModal);
+                    modalState.openModal(ModalIds.CropImageModal);
                   }}
                 >
                   {common("crop")}
@@ -161,7 +160,7 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
             <footer className="flex justify-end mt-5">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.ManageBleetModal)}
+                onPress={() => modalState.closeModal(ModalIds.ManageBleetModal)}
                 variant="cancel"
               >
                 {common("cancel")}
@@ -177,8 +176,8 @@ export function ManageBleetModal({ post, onCreate, onUpdate }: Props) {
             </footer>
 
             <CropImageModal
-              isOpen={isOpen(ModalIds.CropImageModal)}
-              onClose={() => closeModal(ModalIds.CropImageModal)}
+              isOpen={modalState.isOpen(ModalIds.CropImageModal)}
+              onClose={() => modalState.closeModal(ModalIds.CropImageModal)}
               image={values.image}
               onSuccess={(...data) => onCropSuccess(...data, (d: any) => setFieldValue("image", d))}
               options={{ height: 500, aspectRatio: 16 / 9 }}

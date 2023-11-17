@@ -7,22 +7,22 @@ import type { GetServerSideProps } from "next";
 import { useTranslations } from "use-intl";
 import { useModal } from "state/modalState";
 import { Button } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { Title } from "components/shared/Title";
 import { usePermission, Permissions } from "hooks/usePermission";
-import type { GetDispatchData, GetEmsFdActiveDeputy, GetIncidentsData } from "@snailycad/types/api";
+import type { GetEmsFdActiveDeputy, GetIncidentsData } from "@snailycad/types/api";
 
 import { useEmsFdState } from "state/ems-fd-state";
 import { IncidentsTable } from "components/leo/incidents/incidents-table";
 
-interface Props extends GetDispatchData {
+interface Props {
   incidents: GetIncidentsData<"ems-fd">;
   activeDeputy: GetEmsFdActiveDeputy | null;
 }
 
 export default function EmsFdIncidents({ activeDeputy, incidents: initialData }: Props) {
   const t = useTranslations("Leo");
-  const { openModal } = useModal();
+  const modalState = useModal();
   const setActiveDeputy = useEmsFdState((state) => state.setActiveDeputy);
 
   const { hasPermissions } = usePermission();
@@ -37,19 +37,18 @@ export default function EmsFdIncidents({ activeDeputy, incidents: initialData }:
   return (
     <Layout
       permissions={{
-        fallback: (u) => u.isLeo,
-        permissions: [Permissions.ViewIncidents, Permissions.ManageIncidents],
+        permissions: [Permissions.ViewEmsFdIncidents, Permissions.ManageEmsFdIncidents],
       }}
       className="dark:text-white"
     >
       <header className="flex items-center justify-between">
         <Title className="!mb-0">{t("incidents")}</Title>
 
-        {hasPermissions([Permissions.ManageIncidents], true) ? (
+        {hasPermissions([Permissions.ManageIncidents]) ? (
           <Button
             title={!isDeputyOnDuty ? "You must have an active ems/fd deputy." : ""}
             disabled={!isDeputyOnDuty}
-            onPress={() => openModal(ModalIds.ManageIncident)}
+            onPress={() => modalState.openModal(ModalIds.ManageIncident)}
           >
             {t("createIncident")}
           </Button>

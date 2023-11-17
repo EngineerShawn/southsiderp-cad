@@ -1,12 +1,12 @@
 import {
   ShouldDoType,
-  StatusValue,
-  Officer,
-  EmsFdDeputy,
-  Citizen,
-  CombinedLeoUnit,
-  MiscCadSettings,
-  cad,
+  type StatusValue,
+  type Officer,
+  type EmsFdDeputy,
+  type Citizen,
+  type CombinedLeoUnit,
+  type MiscCadSettings,
+  type cad,
   DiscordWebhookType,
 } from "@prisma/client";
 import { sendDiscordWebhook, sendRawWebhook } from "lib/discord/webhooks";
@@ -43,7 +43,7 @@ export async function handlePanicButtonPressed(options: HandlePanicButtonPressed
     typeof options.force === "undefined" ? !isCurrentlyPanicMode && isPanicButton : options.force;
 
   if (shouldEnablePanicMode) {
-    options.socket.emitPanicButtonLeo(options.unit, "ON");
+    options.socket.emitPanicButtonLeo(options.unit, options.cad.miscCadSettings, "ON");
 
     try {
       const embed = await createPanicButtonEmbed(options);
@@ -53,6 +53,6 @@ export async function handlePanicButtonPressed(options: HandlePanicButtonPressed
       console.error("[cad_panicButton]: Could not send Discord webhook.", error);
     }
   } else {
-    options.socket.emitPanicButtonLeo(options.unit, "OFF");
+    options.socket.emitPanicButtonLeo(options.unit, options.cad.miscCadSettings, "OFF");
   }
 }

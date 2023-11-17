@@ -1,32 +1,45 @@
 import {
-  MiscCadSettings,
-  User,
+  type MiscCadSettings,
+  type User,
   Feature,
-  VehicleInspectionStatus,
-  VehicleTaxStatus,
+  type VehicleInspectionStatus,
+  type VehicleTaxStatus,
   WhitelistStatus,
   ValueType,
-  cad,
-  Prisma,
-  Value,
+  type cad,
+  type Prisma,
+  type Value,
+  EmployeeAsEnum,
 } from "@prisma/client";
 import { VEHICLE_SCHEMA, DELETE_VEHICLE_SCHEMA, TRANSFER_VEHICLE_SCHEMA } from "@snailycad/schemas";
-import { UseBeforeEach, Context, BodyParams, PathParams, QueryParams } from "@tsed/common";
+import {
+  UseBeforeEach,
+  Context,
+  BodyParams,
+  PathParams,
+  QueryParams,
+  MultipartFile,
+  type PlatformMulterFile,
+} from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { canManageInvariant } from "lib/auth/getSessionUser";
-import { isFeatureEnabled } from "lib/cad";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { isFeatureEnabled } from "lib/upsert-cad";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { generateString } from "utils/generate-string";
 import { citizenInclude } from "./CitizenController";
 import type * as APITypes from "@snailycad/types/api";
 import type { RegisteredVehicle } from "@snailycad/types";
 import { getLastOfArray, manyToManyHelper } from "lib/data/many-to-many";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { getImageWebPPath } from "~/lib/images/get-image-webp-path";
+import fs from "node:fs/promises";
+import { ExtendedNotFound } from "~/exceptions/extended-not-found";
 
 @Controller("/vehicles")
 @UseBeforeEach(IsAuth)
@@ -133,6 +146,15 @@ export class VehiclesController {
       canManageInvariant(citizen?.userId, user, new NotFound("notFound"));
     } else if (!citizen) {
       throw new NotFound("NotFound");
+    }
+
+    const isPlateBlacklisted = await prisma.blacklistedWord.findFirst({
+      where: {
+        word: { contains: data.plate, mode: "insensitive" },
+      },
+    });
+    if (isPlateBlacklisted) {
+      throw new ExtendedBadRequest({ plate: "blacklistedWordUsed" });
     }
 
     const existing = await prisma.registeredVehicle.findUnique({
@@ -254,7 +276,10 @@ export class VehiclesController {
         },
       });
 
-      if (!employee || employee.role?.as === "EMPLOYEE") {
+      const isOwner = employee?.role?.as === EmployeeAsEnum.OWNER;
+      const canManageEmployees = isOwner ? true : employee?.canManageEmployees;
+
+      if (!canManageEmployees) {
         throw new NotFound("employeeNotFoundOrInvalidPermissions");
       }
 
@@ -297,6 +322,15 @@ export class VehiclesController {
       throw new BadRequest("vehicleIsImpounded");
     }
 
+    const isPlateBlacklisted = await prisma.blacklistedWord.findFirst({
+      where: {
+        word: { contains: data.plate, mode: "insensitive" },
+      },
+    });
+    if (isPlateBlacklisted) {
+      throw new ExtendedBadRequest({ plate: "blacklistedWordUsed" });
+    }
+
     const existing = await prisma.registeredVehicle.findFirst({
       where: {
         AND: [{ plate: data.plate.toUpperCase() }, { plate: { not: vehicle.plate.toUpperCase() } }],
@@ -324,7 +358,8 @@ export class VehiclesController {
         },
       });
 
-      if (!employee || employee.role?.as === "EMPLOYEE") {
+      const isOwner = employee?.role?.as === "OWNER";
+      if (!employee || !isOwner || employee.canManageVehicles) {
         throw new NotFound("employeeNotFoundOrInvalidPermissions");
       }
     } else {
@@ -383,6 +418,7 @@ export class VehiclesController {
       const connectDisconnectArr = manyToManyHelper(
         vehicle.trimLevels.map((v) => v.id),
         data.trimLevels,
+        { showUpsert: false },
       );
 
       await prisma.$transaction(
@@ -449,25 +485,51 @@ export class VehiclesController {
       throw new NotFound("vehicleNotFound");
     }
 
-    const newOwner = await prisma.citizen.findFirst({
-      where: {
-        AND: [{ id: data.ownerId }, { NOT: { id: String(vehicle.citizenId) } }],
-      },
-    });
+    if (data.businessId) {
+      const business = await prisma.business.findUnique({
+        where: { id: data.businessId },
+      });
 
-    if (!newOwner) {
-      throw new NotFound("newOwnerNotFound");
+      if (!business) {
+        throw new ExtendedNotFound({ business: "businessNotFound" });
+      }
+
+      const updatedVehicle = await prisma.registeredVehicle.update({
+        where: { id: vehicle.id },
+        data: {
+          Business: { connect: { id: data.businessId } },
+        },
+      });
+
+      return updatedVehicle;
     }
 
-    const updatedVehicle = await prisma.registeredVehicle.update({
-      where: { id: vehicle.id },
-      data: {
-        citizenId: newOwner.id,
-        userId: newOwner.userId,
-      },
-    });
+    if (data.ownerId) {
+      const newOwner = await prisma.citizen.findFirst({
+        where: {
+          AND: [{ id: data.ownerId }, { NOT: { id: String(vehicle.citizenId) } }],
+        },
+      });
 
-    return updatedVehicle;
+      if (!newOwner) {
+        throw new NotFound("newOwnerNotFound");
+      }
+
+      const updatedVehicle = await prisma.registeredVehicle.update({
+        where: { id: vehicle.id },
+        data: {
+          citizenId: newOwner.id,
+          userId: newOwner.userId,
+        },
+      });
+
+      return updatedVehicle;
+    }
+
+    throw new ExtendedBadRequest({
+      ownerId: "ownerIdOrBusinessIdRequired",
+      businessId: "ownerIdOrBusinessIdRequired",
+    });
   }
 
   @Delete("/:id")
@@ -506,7 +568,8 @@ export class VehiclesController {
         },
       });
 
-      if (!employee || employee.role?.as === "EMPLOYEE") {
+      const isOwner = employee?.role?.as === "OWNER";
+      if (!employee || !isOwner || !employee.canManageVehicles) {
         throw new NotFound("employeeNotFoundOrInvalidPermissions");
       }
     } else {
@@ -533,6 +596,61 @@ export class VehiclesController {
     });
 
     return true;
+  }
+
+  @Post("/:id")
+  async uploadImageToVehicle(
+    @Context("user") user: User,
+    @PathParams("id") vehicleId: string,
+    @MultipartFile("image") file?: PlatformMulterFile,
+  ): Promise<APITypes.PostCitizenImageByIdData> {
+    try {
+      const vehicle = await prisma.registeredVehicle.findUnique({
+        where: {
+          id: vehicleId,
+          userId: user.id,
+        },
+      });
+
+      if (!vehicle) {
+        throw new NotFound("vehicleNotFound");
+      }
+
+      if (!file) {
+        throw new ExtendedBadRequest({ file: "No file provided." }, "invalidImageType");
+      }
+
+      if (!allowedFileExtensions.includes(file.mimetype as AllowedFileExtension)) {
+        throw new ExtendedBadRequest({ image: "invalidImageType" }, "invalidImageType");
+      }
+
+      const image = await getImageWebPPath({
+        buffer: file.buffer,
+        pathType: "values",
+        id: `${vehicle.id}-${file.originalname.split(".")[0]}`,
+      });
+
+      const previousImage = vehicle.imageId
+        ? `${process.cwd()}/public/values/${vehicle.imageId}`
+        : undefined;
+
+      if (previousImage) {
+        await fs.rm(previousImage, { force: true });
+      }
+
+      const [data] = await Promise.all([
+        prisma.registeredVehicle.update({
+          where: { id: vehicle.id },
+          data: { imageId: image.fileName },
+          select: { imageId: true },
+        }),
+        fs.writeFile(image.path, image.buffer),
+      ]);
+
+      return data;
+    } catch {
+      throw new BadRequest("errorUploadingImage");
+    }
   }
 
   private async generateOrValidateVINNumber(options: {

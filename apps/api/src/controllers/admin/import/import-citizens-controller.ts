@@ -6,21 +6,20 @@ import {
   QueryParams,
   BodyParams,
   MultipartFile,
-  PlatformMulterFile,
+  type PlatformMulterFile,
   UseBeforeEach,
 } from "@tsed/common";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { parseImportFile } from "utils/file";
 import { validateSchema } from "lib/data/validate-schema";
 import { generateString } from "utils/generate-string";
 import { IMPORT_CITIZENS_ARR } from "@snailycad/schemas/dist/admin/import/citizens";
 import { importVehiclesHandler } from "./import-vehicles-controller";
 import { importWeaponsHandler } from "./import-weapons-controller";
-import { updateCitizenLicenseCategories } from "lib/citizen/licenses";
+import { updateCitizenLicenseCategories } from "~/lib/citizen/licenses/update-citizen-license-categories";
 import { manyToManyHelper } from "lib/data/many-to-many";
 import type * as APITypes from "@snailycad/types/api";
 import { Permissions, UsePermissions } from "middlewares/use-permissions";
-import { Rank } from "@snailycad/types";
 import { citizenInclude } from "controllers/citizen/CitizenController";
 
 @Controller("/admin/import/citizens")
@@ -30,7 +29,6 @@ export class ImportCitizensController {
   @Post("/file")
   @Description("Import citizens in the CAD via file upload")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportCitizens, Permissions.ManageCitizens],
   })
   async importCitizens(
@@ -43,7 +41,6 @@ export class ImportCitizensController {
   @Post("/")
   @Description("Import citizens in the CAD via body data")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportCitizens, Permissions.ManageCitizens],
   })
   async importCitizensViaBodyData(
@@ -55,7 +52,6 @@ export class ImportCitizensController {
   @Get("/random")
   @Description("Get a random citizen")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportCitizens, Permissions.ManageCitizens],
   })
   async getRandomCitizen(@QueryParams("userRegisteredOnly", Boolean) userRegisteredOnly?: boolean) {
@@ -80,7 +76,6 @@ export class ImportCitizensController {
   @Get("/citizen-ids")
   @Description("Get all citizen IDs in the CAD")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ImportCitizens, Permissions.ManageCitizens],
   })
   async getCitizenIds(
@@ -135,26 +130,32 @@ export class ImportCitizensController {
             hairColor: data.hairColor ?? "",
             height: data.height ?? "",
             weight: data.weight ?? "",
-            socialSecurityNumber: generateString(9, { type: "numbers-only" }),
+            socialSecurityNumber:
+              data.socialSecurityNumber || generateString(9, { type: "numbers-only" }),
             weaponLicenseId: data.weaponLicenseId ?? null,
             driversLicenseId: data.driversLicenseId ?? null,
             pilotLicenseId: data.pilotLicenseId ?? null,
             postal: data.postal ?? null,
             phoneNumber: data.phoneNumber ?? null,
+            occupation: data.occupation ?? null,
           },
           include: { gender: true, ethnicity: true, suspendedLicenses: true },
         });
 
         if (data.vehicles) {
-          await importVehiclesHandler(data.vehicles.map((v) => ({ ...v, ownerId: citizen.id })));
+          await importVehiclesHandler(
+            data.vehicles.map((v) => ({ ...v, userId: data.userId, ownerId: citizen.id })),
+          );
         }
 
         if (data.weapons) {
-          await importWeaponsHandler(data.weapons.map((v) => ({ ...v, ownerId: citizen.id })));
+          await importWeaponsHandler(
+            data.weapons.map((v) => ({ ...v, userId: data.userId, ownerId: citizen.id })),
+          );
         }
 
         if (data.flags) {
-          const disconnectConnectArr = manyToManyHelper([], data.flags);
+          const disconnectConnectArr = manyToManyHelper([], data.flags, { showUpsert: false });
 
           await prisma.$transaction(
             disconnectConnectArr.map((v) =>
@@ -174,6 +175,8 @@ export class ImportCitizensController {
           gender: true,
           ethnicity: true,
           weaponLicense: true,
+          huntingLicense: true,
+          fishingLicense: true,
           driversLicense: true,
           pilotLicense: true,
           waterLicense: true,

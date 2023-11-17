@@ -3,30 +3,30 @@ import { ContentType, Description, Post } from "@tsed/schema";
 import { NotFound } from "@tsed/exceptions";
 import { BodyParams, QueryParams } from "@tsed/platform-params";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { callInclude, leoProperties } from "utils/leo/includes";
+
 import { citizenInclude } from "controllers/citizen/CitizenController";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import {
-  cad,
-  Citizen,
+  type cad,
+  type Citizen,
   CustomFieldCategory,
-  DepartmentValue,
+  type DepartmentValue,
   Feature,
-  Officer,
+  type Officer,
   WhitelistStatus,
-  User,
+  type User,
 } from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { CUSTOM_FIELD_SEARCH_SCHEMA } from "@snailycad/schemas";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { defaultPermissions, hasPermission } from "@snailycad/permissions";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import type * as APITypes from "@snailycad/types/api";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
-import { setEndedSuspendedLicenses } from "lib/citizen/setEndedSuspendedLicenses";
+import { setEndedSuspendedLicenses } from "lib/citizen/licenses/set-ended-suspended-licenses";
 import { incidentInclude } from "../incidents/IncidentController";
-import { callInclude } from "controllers/dispatch/911-calls/Calls911Controller";
 import { officerOrDeputyToUnit } from "lib/leo/officerOrDeputyToUnit";
 
 export const vehicleSearchInclude = {
@@ -41,15 +41,13 @@ export const vehicleSearchInclude = {
   notes: true,
 };
 
-export const RecordsInclude = (isRecordApprovalEnabled: boolean) => ({
+export const recordsInclude = (isRecordApprovalEnabled: boolean) => ({
   where: isRecordApprovalEnabled ? { status: WhitelistStatus.ACCEPTED } : undefined,
   include: {
-    officer: {
-      include: leoProperties,
-    },
+    officer: { include: leoProperties },
     seizedItems: true,
     courtEntry: { include: { dates: true } },
-    vehicle: { include: { model: { include: { value: true } } } },
+    vehicle: { include: { model: { include: { value: true } }, registrationStatus: true } },
     incident: { include: incidentInclude },
     call911: { include: callInclude },
     violations: {
@@ -75,6 +73,12 @@ export const citizenSearchIncludeOrSelect = (
     defaultReturn: false,
   });
 
+  const isPendingWarrantsEnabled = isFeatureEnabled({
+    feature: Feature.WARRANT_STATUS_APPROVAL,
+    features: cad.features,
+    defaultReturn: false,
+  });
+
   const hasPerms = hasPermission({
     userToCheck: user,
     permissionsToCheck: [
@@ -82,22 +86,25 @@ export const citizenSearchIncludeOrSelect = (
       ...defaultPermissions.defaultDispatchPermissions,
       ...defaultPermissions.defaultEmsFdPermissions,
     ],
-    fallback: (user) => user.isLeo || user.isDispatch || user.isEmsFd,
   });
 
   if (hasPerms) {
+    const warrantWhere = isPendingWarrantsEnabled
+      ? { approvalStatus: WhitelistStatus.ACCEPTED }
+      : {};
+
     return {
       include: {
         officers: { select: { department: { select: { isConfidential: true } } } },
         ...citizenInclude,
         vehicles: { include: vehicleSearchInclude },
         addressFlags: true,
-        businesses: true,
         medicalRecords: true,
+        DoctorVisit: true,
         customFields: { include: { field: true } },
-        warrants: { include: { officer: { include: leoProperties } } },
+        warrants: { where: warrantWhere, include: { officer: { include: leoProperties } } },
         notes: true,
-        Record: RecordsInclude(isEnabled),
+        Record: recordsInclude(isEnabled),
         dlCategory: { include: { value: true } },
       },
     } as any;
@@ -121,6 +128,7 @@ const weaponsInclude = {
   model: { include: { value: true } },
   registrationStatus: true,
   customFields: { include: { field: true } },
+  flags: true,
 };
 
 @Controller("/search")
@@ -146,19 +154,28 @@ export class LeoSearchController {
       return [];
     }
 
+    if (!fromAuthUserOnly) {
+      // todo: check for LEO perms
+    }
+
+    const checkUserId = shouldCheckCitizenUserId({ cad, user });
+
     if (citizenId) {
       const citizens = await prisma.citizen.findMany({
-        where: { id: citizenId },
+        where: { id: citizenId, userId: fromAuthUserOnly && checkUserId ? user.id : undefined },
         take: 35,
         ...citizenSearchIncludeOrSelect(user, cad),
       });
 
-      return appendConfidential(
-        await appendCustomFields(citizens, CustomFieldCategory.CITIZEN),
-      ) as APITypes.PostLeoSearchCitizenData;
+      const citizensWithCustomFields = await appendCustomFields(
+        citizens,
+        CustomFieldCategory.CITIZEN,
+      );
+      const citizensWithConfidential = appendConfidential(citizensWithCustomFields);
+
+      return citizensWithConfidential as APITypes.PostLeoSearchCitizenData;
     }
 
-    const checkUserId = shouldCheckCitizenUserId({ cad, user });
     const citizens = await prisma.citizen.findMany({
       where: {
         userId: fromAuthUserOnly && checkUserId ? user.id : undefined,
@@ -182,17 +199,20 @@ export class LeoSearchController {
       ...citizenSearchIncludeOrSelect(user, cad),
     });
 
-    return appendAssignedUnitData(
-      appendConfidential(
-        await appendCustomFields(setEndedSuspendedLicenses(citizens), CustomFieldCategory.CITIZEN),
-      ),
-    ) as APITypes.PostLeoSearchCitizenData;
+    const citizensWithEndedSuspendedLicenses = await setEndedSuspendedLicenses(citizens);
+    const citizensWithCustomFields = await appendCustomFields(
+      citizensWithEndedSuspendedLicenses,
+      CustomFieldCategory.CITIZEN,
+    );
+    const citizensWithConfidential = appendConfidential(citizensWithCustomFields);
+    const citizensWithAssignedUnitData = appendAssignedUnitData(citizensWithConfidential);
+
+    return citizensWithAssignedUnitData as APITypes.PostLeoSearchCitizenData;
   }
 
   @Post("/business")
   @Description("Search businesses by their name")
   @UsePermissions({
-    fallback: (u) => u.isLeo || u.isDispatch,
     permissions: [Permissions.Leo, Permissions.Dispatch],
   })
   async searchBusinessByName(
@@ -217,8 +237,7 @@ export class LeoSearchController {
         },
       },
       include: {
-        Record: RecordsInclude(isEnabled),
-        citizen: true,
+        Record: recordsInclude(isEnabled),
         vehicles: {
           include: vehicleSearchInclude,
         },
@@ -237,7 +256,6 @@ export class LeoSearchController {
   @Post("/weapon")
   @Description("Search weapons by their serialNumber")
   @UsePermissions({
-    fallback: (u) => u.isLeo || u.isDispatch,
     permissions: [Permissions.Leo, Permissions.Dispatch],
   })
   async searchWeapon(
@@ -275,14 +293,13 @@ export class LeoSearchController {
   @Post("/vehicle")
   @Description("Search vehicles by their plate or vinNumber")
   @UsePermissions({
-    fallback: (u) => u.isLeo || u.isDispatch,
     permissions: [Permissions.Leo, Permissions.Dispatch],
   })
   async searchVehicle(
-    @BodyParams("plateOrVin", String) _plateOrVin: string,
-    @QueryParams("includeMany", Boolean) includeMany: boolean,
+    @BodyParams("plateOrVin", String) _plateOrVin?: string,
+    @QueryParams("includeMany", Boolean) includeMany?: boolean,
   ): Promise<APITypes.PostLeoSearchVehicleData> {
-    const trimmedPlateOrVin = _plateOrVin.trim();
+    const trimmedPlateOrVin = _plateOrVin?.trim();
 
     if (!trimmedPlateOrVin || trimmedPlateOrVin.length < 3) {
       return null;
@@ -316,7 +333,6 @@ export class LeoSearchController {
   @Post("/custom-field")
   @Description("Search a citizen, vehicle or weapon via a custom field")
   @UsePermissions({
-    fallback: (u) => u.isLeo || u.isDispatch,
     permissions: [Permissions.Leo, Permissions.Dispatch],
   })
   async customFieldSearch(

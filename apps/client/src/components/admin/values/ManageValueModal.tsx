@@ -8,28 +8,27 @@ import {
   BASE_VALUE_SCHEMA,
   CALL_TYPE_SCHEMA,
 } from "@snailycad/schemas";
-import { FormField } from "components/form/FormField";
-import { Loader, Button, SelectField, TextField } from "@snailycad/ui";
+import { Loader, Button, SelectField, TextField, SwitchField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
 import { useModal } from "state/modalState";
 import { useValues } from "context/ValuesContext";
 import {
-  AnyValue,
+  type AnyValue,
   DriversLicenseCategoryType,
   EmployeeAsEnum,
+  type Feature,
   QualificationValueType,
   ValueType,
 } from "@snailycad/types";
 import { useTranslations } from "use-intl";
-import { Select } from "components/form/Select";
 import hexColor from "hex-color-regex";
-import { ModalIds } from "types/ModalIds";
-import { DepartmentFields } from "./manage-modal/DepartmentFields";
-import { StatusValueFields, useDefaultDepartments } from "./manage-modal/StatusValueFields";
-import { LicenseFields } from "./manage-modal/LicenseFields";
+import { ModalIds } from "types/modal-ids";
+import { DepartmentFields } from "./manage-modal/department-fields";
+import { StatusValueFields, useDefaultDepartments } from "./manage-modal/status-value-fields";
+import { LicenseFields } from "./manage-modal/license-fields";
 import {
   isEmployeeValue,
   isBaseValue,
@@ -45,44 +44,33 @@ import {
   isAddressValue,
   isEmergencyVehicleValue,
 } from "@snailycad/utils/typeguards";
-import { QualificationFields } from "./manage-modal/QualificationFields";
+import { QualificationFields } from "./manage-modal/qualification-fields";
 import { ImageSelectInput, validateFile } from "components/form/inputs/ImageSelectInput";
-import { Toggle } from "components/form/Toggle";
 import type { PatchValueByIdData, PostValuesData } from "@snailycad/types/api";
 import {
   getDisabledFromValue,
+  getTypeForValue,
   getValueStrFromValue,
   makeDefaultWhatPages,
 } from "lib/admin/values/utils";
-import { DivisionFields } from "./manage-modal/DivisionFields";
-import { AddressFields } from "./manage-modal/AddressFields";
-import { EmergencyVehicleFields, useDefaultDivisions } from "./manage-modal/EmergencyVehicleFields";
+import { DivisionFields } from "./manage-modal/division-fields";
+import { AddressFields } from "./manage-modal/address-fields";
+import {
+  EmergencyVehicleFields,
+  useDefaultDivisions,
+} from "./manage-modal/emergency-vehicle-fields";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
+import { VehicleFields } from "./manage-modal/vehicle-fields";
+import type { z } from "zod";
 
 interface Props {
   type: ValueType;
   value: AnyValue | null;
-  clType?: DriversLicenseCategoryType | null;
   onCreate(newValue: AnyValue): void;
   onUpdate(oldValue: AnyValue, newValue: AnyValue): void;
 }
 
-const BUSINESS_VALUES = [
-  {
-    value: EmployeeAsEnum.OWNER,
-    label: "Owner",
-  },
-  {
-    value: EmployeeAsEnum.MANAGER,
-    label: "Manager",
-  },
-  {
-    value: EmployeeAsEnum.EMPLOYEE,
-    label: "Employee",
-  },
-];
-
-const EXTRA_SCHEMAS: Partial<Record<ValueType, Zod.ZodObject<Zod.ZodRawShape>>> = {
+const EXTRA_SCHEMAS: Partial<Record<ValueType, z.ZodType>> = {
   CODES_10: CODES_10_SCHEMA,
   DEPARTMENT: DEPARTMENT_SCHEMA,
   DIVISION: DIVISION_SCHEMA,
@@ -92,34 +80,133 @@ const EXTRA_SCHEMAS: Partial<Record<ValueType, Zod.ZodObject<Zod.ZodRawShape>>> 
   CALL_TYPE: CALL_TYPE_SCHEMA,
 };
 
-export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, value }: Props) {
+interface CreateInitialValuesOptions {
+  value: AnyValue | null;
+  type: ValueType;
+  features: Record<Feature, boolean>;
+  makeDefaultDepartmentsValues(value: AnyValue): string[];
+  defaultDivisions(value: AnyValue): string[];
+}
+
+export type ManageValueFormValues = ReturnType<typeof createInitialValues>;
+function createInitialValues(options: CreateInitialValuesOptions) {
+  const { value } = options;
+
+  return {
+    isDisabled: value ? getDisabledFromValue(value) : false,
+    value: value ? getValueStrFromValue(value) : "",
+
+    description:
+      value && (isUnitQualification(value) || isDLCategoryValue(value))
+        ? value.description ?? ""
+        : "",
+    qualificationType:
+      value && isUnitQualification(value)
+        ? value.qualificationType
+        : QualificationValueType.QUALIFICATION,
+
+    shouldDo: value && isStatusValue(value) ? value.shouldDo : "",
+    color: value && isStatusValue(value) ? value.color ?? "" : "",
+    textColor: value && isStatusValue(value) ? value.textColor ?? "" : "",
+    type: getTypeForValue(options.type, value),
+    departments:
+      value &&
+      (isStatusValue(value) || isUnitQualification(value) || isEmergencyVehicleValue(value))
+        ? options.makeDefaultDepartmentsValues(value)
+        : undefined,
+    whatPages: value && isStatusValue(value) ? makeDefaultWhatPages(value) : [],
+
+    pairedUnitTemplate: value && isDivisionValue(value) ? value.pairedUnitTemplate ?? "" : "",
+    departmentId: value && isDivisionValue(value) ? value.departmentId : "",
+    isConfidential: value && isDepartmentValue(value) ? value.isConfidential : false,
+    whitelisted: value && isDepartmentValue(value) ? value.whitelisted : false,
+    defaultOfficerRankId: value && isDepartmentValue(value) ? value.defaultOfficerRankId : null,
+    isDefaultDepartment: value && isDepartmentValue(value) ? value.isDefaultDepartment : false,
+    callsign:
+      value && (isDepartmentValue(value) || isDivisionValue(value)) ? value.callsign ?? "" : "",
+    customTemplate: value && isDepartmentValue(value) ? value.customTemplate ?? "" : "",
+
+    as: value && isEmployeeValue(value) ? value.as : "",
+    hash: value && (isVehicleValue(value) || isWeaponValue(value)) ? value.hash ?? "" : undefined,
+    trimLevels: value && isVehicleValue(value) ? value.trimLevels?.map((v) => v.id) ?? [] : [],
+
+    licenseType: value && isBaseValue(value) ? value.licenseType : null,
+    isDefault: value && isBaseValue(value) ? value.isDefault : undefined,
+    priority: value && isCallTypeValue(value) ? value.priority ?? undefined : undefined,
+    isDisposition: value && isCallTypeValue(value) ? value.isDisposition ?? undefined : undefined,
+
+    officerRankImageId: "",
+    officerRankDepartments:
+      value && isOfficerRankValue(value) ? options.makeDefaultDepartmentsValues(value) : undefined,
+
+    postal: value && isAddressValue(value) ? value.postal ?? "" : "",
+    county: value && isAddressValue(value) ? value.county ?? "" : "",
+
+    divisions:
+      value && isEmergencyVehicleValue(value) && options.features.DIVISIONS
+        ? options.defaultDivisions(value)
+        : undefined,
+
+    showPicker: false,
+    image: "",
+
+    extraFields:
+      value && (isDivisionValue(value) || isDepartmentValue(value))
+        ? safelyStringifyJSON(value.extraFields)
+        : "null",
+
+    departmentLinks: value && isDepartmentValue(value) ? value.links ?? [] : [],
+  };
+}
+
+export function ManageValueModal({ onCreate, onUpdate, type, value }: Props) {
   const [image, setImage] = React.useState<File | string | null>(null);
 
   const { state, execute } = useFetch();
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations(type);
   const common = useTranslations("Common");
-  const defaultDepartments = useDefaultDepartments();
+  const tValues = useTranslations("Values");
+  const { makeDefaultDepartmentsValues } = useDefaultDepartments();
   const defaultDivisions = useDefaultDivisions();
 
   const title = !value ? t("ADD") : t("EDIT");
   const footerTitle = !value ? t("ADD") : common("save");
-  const { vehicleTrimLevel, department } = useValues();
-  const { DIVISIONS } = useFeatureEnabled();
+  const { department } = useValues();
+  const features = useFeatureEnabled();
+
+  const BUSINESS_VALUES = [
+    {
+      value: EmployeeAsEnum.OWNER,
+      label: tValues("owner"),
+    },
+    {
+      value: EmployeeAsEnum.MANAGER,
+      label: tValues("manager"),
+    },
+    {
+      value: EmployeeAsEnum.EMPLOYEE,
+      label: tValues("employee"),
+    },
+  ];
 
   async function onSubmit(
     values: typeof INITIAL_VALUES,
     helpers: FormikHelpers<typeof INITIAL_VALUES>,
   ) {
+    if (safelyParseJSON(values.extraFields) === false) {
+      helpers.setFieldError("extraFields", tValues("mustBeValidJson"));
+      return;
+    }
+
     const data = {
       ...values,
-      type: dlType ? dlType : values.type,
       whatPages: values.whatPages,
-      departments: values.departments?.map((v) => v.value),
-      divisions: values.divisions?.map((v) => v.value),
-      officerRankDepartments: values.officerRankDepartments?.map((v) => v.value),
-      trimLevels: values.trimLevels.map((v) => v.value),
-      extraFields: JSON.parse(values.extraFields),
+      departments: values.departments,
+      divisions: values.divisions,
+      officerRankDepartments: values.officerRankDepartments,
+      trimLevels: values.trimLevels,
+      extraFields: safelyParseJSON(values.extraFields),
     };
 
     if (value) {
@@ -131,7 +218,7 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
       });
 
       if (json?.id) {
-        closeModal(ModalIds.ManageValue);
+        modalState.closeModal(ModalIds.ManageValue);
         await handleValueImageUpload(type.toLowerCase(), value.id, helpers);
         onUpdate(value, json);
       }
@@ -145,7 +232,7 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
 
       if (json?.id) {
         await handleValueImageUpload(type.toLowerCase(), json.id, helpers);
-        closeModal(ModalIds.ManageValue);
+        modalState.closeModal(ModalIds.ManageValue);
         onCreate(json);
       }
     }
@@ -178,70 +265,13 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
     }
   }
 
-  const INITIAL_VALUES = {
-    isDisabled: value ? getDisabledFromValue(value) : false,
-    value: value ? getValueStrFromValue(value) : "",
-
-    description:
-      value && (isUnitQualification(value) || isDLCategoryValue(value))
-        ? value.description ?? ""
-        : "",
-    qualificationType:
-      value && isUnitQualification(value)
-        ? value.qualificationType
-        : QualificationValueType.QUALIFICATION,
-
-    shouldDo: value && isStatusValue(value) ? value.shouldDo : "",
-    color: value && isStatusValue(value) ? value.color ?? "" : "",
-    type: value && (isStatusValue(value) || isDepartmentValue(value)) ? value.type : "STATUS_CODE",
-    departments:
-      value &&
-      (isStatusValue(value) || isUnitQualification(value) || isEmergencyVehicleValue(value))
-        ? defaultDepartments(value)
-        : undefined,
-    whatPages: value && isStatusValue(value) ? makeDefaultWhatPages(value) : [],
-
-    pairedUnitTemplate: value && isDivisionValue(value) ? value.pairedUnitTemplate ?? "" : "",
-    departmentId: value && isDivisionValue(value) ? value.departmentId : "",
-    isConfidential: value && isDepartmentValue(value) ? value.isConfidential : false,
-    whitelisted: value && isDepartmentValue(value) ? value.whitelisted : false,
-    defaultOfficerRankId: value && isDepartmentValue(value) ? value.defaultOfficerRankId : null,
-    isDefaultDepartment: value && isDepartmentValue(value) ? value.isDefaultDepartment : false,
-    callsign:
-      value && (isDepartmentValue(value) || isDivisionValue(value)) ? value.callsign ?? "" : "",
-
-    as: value && isEmployeeValue(value) ? value.as : "",
-    hash: value && (isVehicleValue(value) || isWeaponValue(value)) ? value.hash ?? "" : undefined,
-    trimLevels:
-      value && isVehicleValue(value)
-        ? value.trimLevels?.map((value) => ({
-            value: value.id,
-            label: value.value,
-          })) ?? []
-        : [],
-
-    licenseType: value && isBaseValue(value) ? value.licenseType : null,
-    isDefault: value && isBaseValue(value) ? value.isDefault : undefined,
-    priority: value && isCallTypeValue(value) ? value.priority ?? undefined : undefined,
-
-    officerRankImageId: "",
-    officerRankDepartments:
-      value && isOfficerRankValue(value) ? defaultDepartments(value) : undefined,
-
-    postal: value && isAddressValue(value) ? value.postal ?? "" : "",
-    county: value && isAddressValue(value) ? value.county ?? "" : "",
-
-    divisions:
-      value && isEmergencyVehicleValue(value) && DIVISIONS ? defaultDivisions(value) : undefined,
-
-    showPicker: false,
-    image: "",
-
-    extraFields:
-      value && (isDivisionValue(value) || isDepartmentValue(value))
-        ? JSON.stringify(value.extraFields)
-        : "null",
-  };
+  const INITIAL_VALUES = createInitialValues({
+    value,
+    type,
+    makeDefaultDepartmentsValues,
+    defaultDivisions,
+    features,
+  });
 
   function validate(values: typeof INITIAL_VALUES) {
     if (type === ValueType.LICENSE) {
@@ -255,7 +285,14 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
     if (values.color && !hexColor().test(values.color)) {
       return {
         ...errors,
-        color: "Must be a valid HEX color",
+        color: tValues("mustBeValidHexColor"),
+      };
+    }
+
+    if (values.textColor && !hexColor().test(values.textColor)) {
+      return {
+        ...errors,
+        textColor: tValues("mustBeValidHexColor"),
       };
     }
 
@@ -266,16 +303,16 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
     <Modal
       className="w-[600px]"
       title={title}
-      onClose={() => closeModal(ModalIds.ManageValue)}
-      isOpen={isOpen(ModalIds.ManageValue)}
+      onClose={() => modalState.closeModal(ModalIds.ManageValue)}
+      isOpen={modalState.isOpen(ModalIds.ManageValue)}
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, values, errors }) => (
+        {({ setFieldValue, values, errors }) => (
           <Form>
             {type === ValueType.DIVISION ? null : (
               <TextField
                 errorMessage={errors.value}
-                label="Value"
+                label={tValues("value")}
                 autoFocus
                 name="value"
                 onChange={(value) => setFieldValue("value", value)}
@@ -297,7 +334,7 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
             {type === ValueType.BUSINESS_ROLE ? (
               <SelectField
                 errorMessage={errors.as}
-                label="As (this is so the database knows what to use.)"
+                label={tValues("as")}
                 options={BUSINESS_VALUES}
                 name="as"
                 onSelectionChange={(key) => setFieldValue("as", key)}
@@ -305,31 +342,32 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
               />
             ) : null}
 
+            {type === ValueType.DRIVERSLICENSE_CATEGORY ? (
+              <SelectField
+                errorMessage={errors.type}
+                label={tValues("category")}
+                options={Object.keys(DriversLicenseCategoryType).map((key) => ({
+                  value: key,
+                  label: key,
+                }))}
+                onSelectionChange={(value) => setFieldValue("type", value)}
+                selectedKey={values.type}
+              />
+            ) : null}
+
             {["VEHICLE", "WEAPON"].includes(type) ? (
               <TextField
                 isOptional
                 errorMessage={errors.hash}
-                label="Game Hash"
+                label={tValues("gameHash")}
                 name="hash"
                 onChange={(value) => setFieldValue("hash", value)}
                 value={values.hash}
               />
             ) : null}
 
-            {ValueType.VEHICLE === type ? (
-              <FormField label="Trim Levels">
-                <Select
-                  isMulti
-                  closeMenuOnSelect={false}
-                  name="trimLevels"
-                  onChange={handleChange}
-                  value={values.trimLevels}
-                  values={vehicleTrimLevel.values.map((trimLevel) => ({
-                    value: trimLevel.id,
-                    label: trimLevel.value,
-                  }))}
-                />
-              </FormField>
+            {type === ValueType.VEHICLE ? (
+              <VehicleFields setImage={setImage} image={image} />
             ) : null}
 
             {type === ValueType.CALL_TYPE ? (
@@ -337,29 +375,41 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
                 type="number"
                 isOptional
                 errorMessage={errors.priority}
-                label="Priority"
+                label={tValues("priority")}
                 name="priority"
                 onChange={(value) => setFieldValue("priority", value)}
                 value={values.priority}
               />
             ) : null}
 
+            {type === ValueType.CALL_TYPE ? (
+              <SwitchField
+                name="isDisposition"
+                onChange={(value) => setFieldValue("isDisposition", value)}
+                isSelected={values.isDisposition}
+                description={tValues("isDispositionDescription")}
+              >
+                {tValues("isDisposition")}
+              </SwitchField>
+            ) : null}
+
             {type === ValueType.OFFICER_RANK ? (
               <>
                 <ImageSelectInput valueKey="officerRankImageId" image={image} setImage={setImage} />
-                <FormField optional label="Departments">
-                  <Select
-                    isMulti
-                    closeMenuOnSelect={false}
-                    name="officerRankDepartments"
-                    onChange={handleChange}
-                    value={values.officerRankDepartments ?? []}
-                    values={department.values.map((department) => ({
-                      value: department.id,
-                      label: department.value.value,
-                    }))}
-                  />
-                </FormField>
+
+                <SelectField
+                  isOptional
+                  label={tValues("departments")}
+                  isClearable
+                  selectionMode="multiple"
+                  errorMessage={errors.officerRankDepartments}
+                  options={department.values.map((department) => ({
+                    value: department.id,
+                    label: department.value.value,
+                  }))}
+                  selectedKeys={values.officerRankDepartments}
+                  onSelectionChange={(keys) => setFieldValue("officerRankDepartments", keys)}
+                />
               </>
             ) : null}
 
@@ -368,7 +418,7 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
                 isTextarea
                 isOptional
                 errorMessage={errors.description}
-                label="Description"
+                label={common("description")}
                 name="description"
                 onChange={(value) => setFieldValue("description", value)}
                 value={values.description}
@@ -377,17 +427,22 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
 
             {type === "CODES_10" ? <StatusValueFields /> : null}
 
-            <FormField errorMessage={errors.isDisabled} label="Disabled">
-              <Toggle name="isDisabled" onCheckedChange={handleChange} value={values.isDisabled} />
-            </FormField>
+            <SwitchField
+              className="my-4 mt-8"
+              isSelected={values.isDisabled}
+              onChange={(isSelected) => setFieldValue("isDisabled", isSelected)}
+              description={tValues("disabledDescription")}
+            >
+              {tValues("isDisabled")}
+            </SwitchField>
 
             <footer className="flex justify-end mt-5">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.ManageValue)}
+                onPress={() => modalState.closeModal(ModalIds.ManageValue)}
                 variant="cancel"
               >
-                Cancel
+                {common("cancel")}
               </Button>
               <Button className="flex items-center" disabled={state === "loading"} type="submit">
                 {state === "loading" ? <Loader className="mr-2" /> : null}
@@ -399,4 +454,24 @@ export function ManageValueModal({ onCreate, onUpdate, clType: dlType, type, val
       </Formik>
     </Modal>
   );
+}
+
+function safelyParseJSON(json: string) {
+  if (!json) return null;
+
+  try {
+    return JSON.parse(json);
+  } catch {
+    return false;
+  }
+}
+
+function safelyStringifyJSON(json: string | null) {
+  if (!json) return "null";
+
+  try {
+    return JSON.stringify(json, null, 4);
+  } catch {
+    return "null";
+  }
 }

@@ -1,24 +1,32 @@
-import { FullDate } from "components/shared/FullDate";
-import { Infofield } from "components/shared/Infofield";
+import { FullDate, Infofield } from "@snailycad/ui";
 import { useAuth } from "context/AuthContext";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { calculateAge, formatCitizenAddress } from "lib/utils";
 import { useNameSearch } from "state/search/name-search-state";
 import { useTranslations } from "use-intl";
+import { CustomFieldsArea } from "../../CustomFieldsArea";
+import { useRouter } from "next/router";
 
 export function NameSearchBasicInformation() {
   const currentResult = useNameSearch((state) => state.currentResult);
   const t = useTranslations();
   const { SOCIAL_SECURITY_NUMBERS } = useFeatureEnabled();
-  const { cad } = useAuth();
+  const { cad, user } = useAuth();
+
+  const router = useRouter();
+  const isLeo = router.pathname === "/officer";
 
   if (!currentResult || currentResult.isConfidential) {
     return null;
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full mb-6 md:mb-0">
       <div className="flex flex-col">
+        {user?.developerMode ? (
+          <Infofield label={t("Citizen.id")}>{currentResult.id}</Infofield>
+        ) : null}
+
         <Infofield label={t("Citizen.fullName")}>
           {currentResult.name} {currentResult.surname}
         </Infofield>
@@ -69,6 +77,8 @@ export function NameSearchBasicInformation() {
           {currentResult.additionalInfo || t("Common.none")}
         </Infofield>
       </div>
+
+      <CustomFieldsArea currentResult={currentResult} isLeo={isLeo} />
     </div>
   );
 }

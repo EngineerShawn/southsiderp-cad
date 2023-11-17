@@ -1,16 +1,13 @@
 import * as React from "react";
 import { useTranslations } from "use-intl";
 import Link from "next/link";
-import { Rank } from "@snailycad/types";
 import { yesOrNoText } from "lib/utils";
 import { Table, useTableState } from "components/shared/Table";
-import { Status } from "components/shared/Status";
 import { useAuth } from "context/AuthContext";
 import { usePermission, Permissions } from "hooks/usePermission";
 import { defaultPermissions } from "@snailycad/permissions";
-import { classNames } from "lib/classNames";
 import { useAsyncTable } from "hooks/shared/table/use-async-table";
-import { buttonVariants, TabsContent } from "@snailycad/ui";
+import { buttonVariants, Status, TabsContent } from "@snailycad/ui";
 import type { GetManageUsersData } from "@snailycad/types/api";
 import { SearchArea } from "components/shared/search/search-area";
 import dynamic from "next/dynamic";
@@ -29,21 +26,30 @@ export function AllUsersTab({ users, totalCount }: GetManageUsersData) {
   const t = useTranslations("Management");
   const common = useTranslations("Common");
 
-  const hasManagePermissions = hasPermissions(
-    [Permissions.ManageUsers, Permissions.BanUsers, Permissions.DeleteUsers],
-    true,
-  );
+  const hasManagePermissions = hasPermissions([
+    Permissions.ManageUsers,
+    Permissions.BanUsers,
+    Permissions.DeleteUsers,
+  ]);
 
   const asyncTable = useAsyncTable({
     search,
     initialData: users,
     totalCount,
+    sortingSchema: {
+      username: "username",
+      rank: "rank",
+      whitelistStatus: "whitelistStatus",
+    },
     fetchOptions: {
       path: "/admin/manage/users",
       onResponse: (json: GetManageUsersData) => ({ totalCount: json.totalCount, data: json.users }),
     },
   });
-  const tableState = useTableState({ pagination: asyncTable.pagination });
+  const tableState = useTableState({
+    sorting: asyncTable.sorting,
+    pagination: asyncTable.pagination,
+  });
 
   return (
     <TabsContent aria-label={t("allUsers")} value="allUsers" className="mt-5">
@@ -55,25 +61,18 @@ export function AllUsersTab({ users, totalCount }: GetManageUsersData) {
         data={asyncTable.items.map((user) => {
           const hasAdminPermissions = hasPermissions(
             defaultPermissions.allDefaultAdminPermissions,
-            user.rank !== Rank.USER,
             user,
           );
 
-          const hasLeoPermissions = hasPermissions(
-            defaultPermissions.defaultLeoPermissions,
-            user.isLeo,
-            user,
-          );
+          const hasLeoPermissions = hasPermissions(defaultPermissions.defaultLeoPermissions, user);
 
           const hasDispatchPermissions = hasPermissions(
             defaultPermissions.defaultDispatchPermissions,
-            user.isLeo,
             user,
           );
 
           const hasEmsFdPermissions = hasPermissions(
             defaultPermissions.defaultEmsFdPermissions,
-            user.isLeo,
             user,
           );
 
@@ -88,7 +87,7 @@ export function AllUsersTab({ users, totalCount }: GetManageUsersData) {
             whitelistStatus: <Status>{user.whitelistStatus}</Status>,
             actions: (
               <Link
-                className={classNames(buttonVariants.default, "p-0.5 px-2 rounded-md")}
+                className={buttonVariants({ size: "xs" })}
                 href={`/admin/manage/users/${user.id}`}
               >
                 {common("manage")}
@@ -97,13 +96,15 @@ export function AllUsersTab({ users, totalCount }: GetManageUsersData) {
           };
         })}
         columns={[
-          { header: "Username", accessorKey: "username" },
-          { header: "Rank", accessorKey: "rank" },
-          { header: "Admin Permissions", accessorKey: "isAdmin" },
-          { header: "LEO Permissions", accessorKey: "isLeo" },
-          { header: "EMS/FD Permissions", accessorKey: "isEmsFd" },
-          { header: "Dispatch Permissions", accessorKey: "isDispatch" },
-          cad?.whitelisted ? { header: "Whitelist Status", accessorKey: "whitelistStatus" } : null,
+          { header: t("username"), accessorKey: "username" },
+          { header: t("rank"), accessorKey: "rank" },
+          { header: t("adminPermissions"), accessorKey: "isAdmin" },
+          { header: t("leoPermissions"), accessorKey: "isLeo" },
+          { header: t("emsFdPermissions"), accessorKey: "isEmsFd" },
+          { header: t("dispatchPermissions"), accessorKey: "isDispatch" },
+          cad?.whitelisted
+            ? { header: t("whitelistStatus"), accessorKey: "whitelistStatus" }
+            : null,
 
           hasManagePermissions ? { header: common("actions"), accessorKey: "actions" } : null,
         ]}

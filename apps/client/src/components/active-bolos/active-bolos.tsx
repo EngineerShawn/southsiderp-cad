@@ -2,13 +2,13 @@ import * as React from "react";
 import { useModal } from "state/modalState";
 import { useBolos } from "hooks/realtime/useBolos";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
-import { type Bolo, Rank, ShouldDoType } from "@snailycad/types";
+import { ModalIds } from "types/modal-ids";
+import { type Bolo, ShouldDoType } from "@snailycad/types";
 import { useTranslations } from "use-intl";
 import type { DeleteBolosData, GetBolosData } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
-import { useMounted } from "@casper124578/useful";
-import { Button } from "@snailycad/ui";
+import { useMounted } from "@casperiv/useful";
+import { Button, FullDate } from "@snailycad/ui";
 import { classNames } from "lib/classNames";
 import { Filter } from "react-bootstrap-icons";
 import dynamic from "next/dynamic";
@@ -21,7 +21,6 @@ import { useActiveDispatchers } from "hooks/realtime/use-active-dispatchers";
 import { defaultPermissions } from "@snailycad/permissions";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { makeUnitName } from "lib/utils";
-import { FullDate } from "components/shared/FullDate";
 
 const BoloFilters = dynamic(async () => (await import("./bolo-filters")).BoloFilters, {
   ssr: false,
@@ -46,7 +45,7 @@ export function ActiveBolos({ initialBolos }: Props) {
   const [search, setSearch] = React.useState("");
 
   const { state, execute } = useFetch();
-  const { closeModal, openModal } = useModal();
+  const modalState = useModal();
   const bolosState = useBolos();
   const isMounted = useMounted();
   const bolos = isMounted ? bolosState.bolos : initialBolos.bolos;
@@ -58,10 +57,7 @@ export function ActiveBolos({ initialBolos }: Props) {
   const { pathname } = useRouter();
   const { hasActiveDispatchers } = useActiveDispatchers();
   const { hasPermissions } = usePermission();
-  const isAdmin = hasPermissions(
-    defaultPermissions.allDefaultAdminPermissions,
-    (u) => u.rank !== Rank.USER,
-  );
+  const isAdmin = hasPermissions(defaultPermissions.allDefaultAdminPermissions);
 
   const isDispatchRoute = pathname === "/dispatch";
   const isDisabled = isAdmin
@@ -103,39 +99,52 @@ export function ActiveBolos({ initialBolos }: Props) {
       bolosState.setBolos(bolos.filter((v) => v.id !== tempBolo.id));
 
       boloState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteBolo);
+      modalState.closeModal(ModalIds.AlertDeleteBolo);
     }
   }
 
   function handleEditClick(bolo: Bolo) {
     boloState.setTempId(bolo.id);
-    openModal(ModalIds.ManageBolo);
+    modalState.openModal(ModalIds.ManageBolo);
   }
 
   function handleDeleteClick(bolo: Bolo) {
     boloState.setTempId(bolo.id);
-    openModal(ModalIds.AlertDeleteBolo);
+    modalState.openModal(ModalIds.AlertDeleteBolo);
+  }
+
+  function handleCreateBolo() {
+    modalState.openModal(ModalIds.ManageBolo);
   }
 
   return (
-    <div className="mt-3 card">
+    <div className="mb-3 card">
       <header className="flex items-center justify-between p-2 px-4 bg-gray-200 dark:bg-secondary">
         <h3 className="text-xl font-semibold">{t("Bolos.activeBolos")}</h3>
 
-        <div>
+        <div className="flex gap-1">
+          <Button
+            variant={null}
+            className="bg-gray-500 hover:bg-gray-600 dark:border dark:border-quinary dark:bg-tertiary dark:hover:brightness-125 text-white"
+            onPress={handleCreateBolo}
+            isDisabled={isDispatchRoute ? !hasActiveDispatchers : false}
+          >
+            {t("Bolos.createBolo")}
+          </Button>
           <Button
             variant="cancel"
             className={classNames(
-              "px-1.5 dark:border dark:border-quinary dark:bg-tertiary dark:hover:brightness-125 group",
+              "px-2 dark:border dark:border-quinary dark:bg-tertiary dark:hover:brightness-125 group",
               showFilters && "dark:!bg-secondary !bg-gray-500",
             )}
             onPress={() => setShowFilters(!showFilters)}
             title={t("Bolos.filters")}
-            disabled={asyncTable.noItemsAvailable}
+            isDisabled={asyncTable.noItemsAvailable}
           >
             <Filter
               className={classNames("group-hover:fill-white", showFilters && "text-white")}
               aria-label={t("Bolos.filters")}
+              size={18}
             />
           </Button>
         </div>

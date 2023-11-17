@@ -1,37 +1,46 @@
-import { UseBeforeEach, Context, MultipartFile, PlatformMulterFile } from "@tsed/common";
+import { UseBeforeEach, Context, MultipartFile, type PlatformMulterFile } from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { QueryParams, BodyParams, PathParams } from "@tsed/platform-params";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { BadRequest, Forbidden, NotFound } from "@tsed/exceptions";
 import { CREATE_CITIZEN_SCHEMA, CREATE_OFFICER_SCHEMA } from "@snailycad/schemas";
 import fs from "node:fs/promises";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
 import { generateString } from "utils/generate-string";
-import { User, ValueType, Feature, cad, MiscCadSettings, Prisma } from "@prisma/client";
+import {
+  type User,
+  ValueType,
+  Feature,
+  type cad,
+  type MiscCadSettings,
+  Prisma,
+} from "@prisma/client";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { canManageInvariant, userProperties } from "lib/auth/getSessionUser";
 import { validateSchema } from "lib/data/validate-schema";
-import { updateCitizenLicenseCategories } from "lib/citizen/licenses";
-import { isFeatureEnabled } from "lib/cad";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
-import { citizenObjectFromData } from "lib/citizen";
+import { updateCitizenLicenseCategories } from "lib/citizen/licenses/update-citizen-license-categories";
+import { isFeatureEnabled } from "lib/upsert-cad";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
+import { citizenObjectFromData } from "lib/citizen/citizen-create-data-obj";
 import type * as APITypes from "@snailycad/types/api";
 import { getImageWebPPath } from "lib/images/get-image-webp-path";
-import { validateSocialSecurityNumber } from "lib/citizen/validateSSN";
-import { setEndedSuspendedLicenses } from "lib/citizen/setEndedSuspendedLicenses";
+import { validateSocialSecurityNumber } from "lib/citizen/validate-ssn";
+import { setEndedSuspendedLicenses } from "lib/citizen/licenses/set-ended-suspended-licenses";
 import { upsertOfficer } from "controllers/leo/my-officers/upsert-officer";
-import { createCitizenViolations } from "lib/records/create-citizen-violations";
+import { createCitizenViolations } from "~/lib/leo/records/create-citizen-violations";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
 import { z } from "zod";
-import { RecordsInclude } from "controllers/leo/search/SearchController";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { recordsInclude } from "controllers/leo/search/SearchController";
+import { leoProperties } from "utils/leo/includes";
+import { sendDiscordWebhook } from "~/lib/discord/webhooks";
 
-export const citizenInclude = {
+export const citizenInclude = Prisma.validator<Prisma.CitizenInclude>()({
   user: { select: userProperties },
   flags: true,
   suspendedLicenses: true,
+  licensePoints: true,
   vehicles: {
     orderBy: { createdAt: "desc" },
     include: {
@@ -64,10 +73,12 @@ export const citizenInclude = {
   gender: true,
   weaponLicense: true,
   driversLicense: true,
+  huntingLicense: true,
+  fishingLicense: true,
   pilotLicense: true,
   waterLicense: true,
   dlCategory: { include: { value: true } },
-} as const;
+});
 
 export const citizenIncludeWithRecords = {
   ...citizenInclude,
@@ -194,8 +205,8 @@ export class CitizenController {
     });
 
     const records = await prisma.record.findMany({
-      ...RecordsInclude(isEnabled),
-      where: { ...RecordsInclude(isEnabled).where, citizenId: citizen.id },
+      ...recordsInclude(isEnabled),
+      where: { ...recordsInclude(isEnabled).where, citizenId: citizen.id },
     });
     return records;
   }
@@ -272,6 +283,19 @@ export class CitizenController {
       data: { dead: true, dateOfDead: new Date() },
     });
 
+    const webhookData = {
+      embeds: [
+        {
+          title: "Citizen marked as deceased",
+          description: `${citizen.name} ${citizen.surname} has been marked as deceased by ${citizen.name} ${citizen.surname}`,
+        },
+      ],
+    };
+    await sendDiscordWebhook({
+      data: webhookData,
+      type: "CITIZEN_DECLARED_DEAD",
+    });
+
     return true;
   }
 
@@ -326,6 +350,26 @@ export class CitizenController {
 
     if (date > now) {
       throw new ExtendedBadRequest({ dateOfBirth: "dateLargerThanNow" }, "dateLargerThanNow");
+    }
+
+    const [isFirstNameBlacklisted, isLastNameBlacklisted] = await Promise.all([
+      prisma.blacklistedWord.findFirst({
+        where: {
+          word: { contains: data.name, mode: "insensitive" },
+        },
+      }),
+      prisma.blacklistedWord.findFirst({
+        where: {
+          word: { contains: data.surname, mode: "insensitive" },
+        },
+      }),
+    ]);
+
+    if (isFirstNameBlacklisted) {
+      throw new ExtendedBadRequest({ name: "blacklistedWordUsed" });
+    }
+    if (isLastNameBlacklisted) {
+      throw new ExtendedBadRequest({ surname: "blacklistedWordUsed" });
     }
 
     const defaultLicenseValue = await prisma.value.findFirst({
@@ -396,6 +440,26 @@ export class CitizenController {
       canManageInvariant(citizen?.userId, user, new NotFound("notFound"));
     } else if (!citizen) {
       throw new NotFound("citizenNotFound");
+    }
+
+    const [isFirstNameBlacklisted, isLastNameBlacklisted] = await Promise.all([
+      prisma.blacklistedWord.findFirst({
+        where: {
+          word: { contains: data.name, mode: "insensitive" },
+        },
+      }),
+      prisma.blacklistedWord.findFirst({
+        where: {
+          word: { contains: data.surname, mode: "insensitive" },
+        },
+      }),
+    ]);
+
+    if (isFirstNameBlacklisted) {
+      throw new ExtendedBadRequest({ name: "blacklistedWordUsed" });
+    }
+    if (isLastNameBlacklisted) {
+      throw new ExtendedBadRequest({ surname: "blacklistedWordUsed" });
     }
 
     const date = data.dateOfBirth ? new Date(data.dateOfBirth).getTime() : undefined;

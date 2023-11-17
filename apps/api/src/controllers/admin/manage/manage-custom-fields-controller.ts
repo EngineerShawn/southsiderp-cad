@@ -1,4 +1,4 @@
-import { CustomFieldCategory, Prisma, Rank } from "@prisma/client";
+import { type CustomFieldCategory, type Prisma } from "@prisma/client";
 import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
 import { CUSTOM_FIELDS_SCHEMA } from "@snailycad/schemas";
 import { BodyParams, Context, PathParams, QueryParams, UseBeforeEach } from "@tsed/common";
@@ -7,7 +7,7 @@ import { NotFound } from "@tsed/exceptions";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import type * as APITypes from "@snailycad/types/api";
 
@@ -43,7 +43,6 @@ export class AdminManageCustomFieldsController {
   @Post("/")
   @Description("Create a new custom field")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomFields],
   })
   async createCustomField(
@@ -72,7 +71,6 @@ export class AdminManageCustomFieldsController {
   @Put("/:id")
   @Description("Update a custom field by its id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomFields],
   })
   async updateCustomField(
@@ -111,7 +109,6 @@ export class AdminManageCustomFieldsController {
   @Delete("/:id")
   @Description("Delete a custom field by its id")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageCustomFields],
   })
   async deleteCustomField(

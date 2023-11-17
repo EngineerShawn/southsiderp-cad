@@ -2,20 +2,21 @@ import { hasPermission, Permissions } from "@snailycad/permissions";
 import type { EmsFdDeputy, Feature, User } from "@snailycad/types";
 import { isUnitOfficer } from "@snailycad/utils";
 import type { ActiveOfficer } from "state/leo-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 
-export type Args<T> = Record<Feature | "hasActiveDispatchers" | "isDispatch", boolean> & {
+export type ModalButtonArgs<T> = Record<
+  Feature | "hasActiveDispatchers" | "isDispatch",
+  boolean
+> & {
   unit: EmsFdDeputy | ActiveOfficer | null;
   user: User;
 } & T;
-export interface ModalButton<T = unknown> {
-  (args: Args<T>): {
-    nameKey: [string, string];
-    modalId: ModalIds;
-    /* defaults to true **/
-    isEnabled?: boolean;
-  };
-}
+export type ModalButton<T = unknown> = (args: ModalButtonArgs<T>) => {
+  nameKey: [string, string];
+  modalId: ModalIds;
+  /* defaults to true **/
+  isEnabled?: boolean;
+};
 
 export const switchDivision: ModalButton = ({ DIVISIONS, unit }) => {
   const isEnabled = unit ? isUnitOfficer(unit) && (unit.callsigns?.length ?? 0) >= 1 : false;
@@ -89,6 +90,11 @@ export const createWarrantBtn: ModalButton = ({ user }) => ({
   modalId: ModalIds.CreateWarrant,
   nameKey: ["Leo", "createWarrant"],
   isEnabled: hasPermission({ userToCheck: user, permissionsToCheck: [Permissions.ManageWarrants] }),
+});
+
+export const departmentInformationBtn: ModalButton = () => ({
+  modalId: ModalIds.DepartmentInfo,
+  nameKey: ["Leo", "departmentInformation"],
 });
 
 export const notepadBtn: ModalButton = () => ({

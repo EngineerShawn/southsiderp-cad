@@ -1,44 +1,46 @@
+import * as React from "react";
 import { useTranslations } from "use-intl";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { LEO_VEHICLE_SCHEMA, VEHICLE_SCHEMA } from "@snailycad/schemas";
 import {
   Item,
   AsyncListSearchField,
   Button,
-  Input,
   Loader,
   SelectField,
   TextField,
+  SwitchField,
+  FormRow,
 } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
 import { Modal } from "components/modal/Modal";
 import useFetch from "lib/useFetch";
 import { useValues } from "src/context/ValuesContext";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import {
-  RegisteredVehicle,
+  type RegisteredVehicle,
   ValueLicenseType,
   ValueType,
-  VehicleValue,
+  type VehicleValue,
   WhitelistStatus,
 } from "@snailycad/types";
 import { handleValidate } from "lib/handleValidate";
 import { useCitizen } from "context/CitizenContext";
 import { useRouter } from "next/router";
 import { useAuth } from "context/AuthContext";
-import { Toggle } from "components/form/Toggle";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { useBusinessState } from "state/business-state";
 import { filterLicenseType, filterLicenseTypes } from "lib/utils";
-import { FormRow } from "components/form/FormRow";
 import { useVehicleLicenses } from "hooks/locale/useVehicleLicenses";
 import { toastMessage } from "lib/toastMessage";
 import { CitizenSuggestionsField } from "components/shared/CitizenSuggestionsField";
-import type { PostCitizenVehicleData, PutCitizenVehicleData } from "@snailycad/types/api";
-import { shallow } from "zustand/shallow";
+import type {
+  PostCitizenImageByIdData,
+  PostCitizenVehicleData,
+  PutCitizenVehicleData,
+} from "@snailycad/types/api";
 import { ValueSelectField } from "components/form/inputs/value-select-field";
-import { Select } from "components/form/Select";
+import { ImageSelectInput, validateFile } from "components/form/inputs/ImageSelectInput";
 
 interface Props {
   vehicle: RegisteredVehicle | null;
@@ -48,8 +50,10 @@ interface Props {
 }
 
 export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: Props) {
+  const [image, setImage] = React.useState<File | string | null>(null);
+
   const { state, execute } = useFetch();
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Citizen");
   const tVehicle = useTranslations("Vehicles");
   const common = useTranslations("Common");
@@ -57,17 +61,14 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
   const router = useRouter();
   const { cad } = useAuth();
   const { CUSTOM_TEXTFIELD_VALUES, EDITABLE_VIN } = useFeatureEnabled();
-  const { currentBusiness, currentEmployee } = useBusinessState(
-    (state) => ({
-      currentBusiness: state.currentBusiness,
-      currentEmployee: state.currentEmployee,
-    }),
-    shallow,
-  );
+  const { currentBusiness, currentEmployee } = useBusinessState((state) => ({
+    currentBusiness: state.currentBusiness,
+    currentEmployee: state.currentEmployee,
+  }));
 
   const { INSPECTION_STATUS, TAX_STATUS } = useVehicleLicenses();
 
-  const { vehicle: vehicles, license } = useValues();
+  const { license } = useValues();
 
   const isDisabled = router.pathname === "/citizen/[id]";
   const maxPlateLength = cad?.miscCadSettings?.maxPlateLength ?? 8;
@@ -77,7 +78,7 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
   const validate = handleValidate(schema);
 
   function handleClose() {
-    closeModal(ModalIds.RegisterVehicle);
+    modalState.closeModal(ModalIds.RegisterVehicle);
     onClose?.();
   }
 
@@ -88,7 +89,6 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
     const data = {
       ...values,
       modelValue: undefined,
-      trimLevels: values.trimLevels.map((v) => v.value),
     };
 
     if (vehicle && !isLeo) {
@@ -100,7 +100,9 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
       });
 
       if (json?.id) {
-        onUpdate?.(vehicle, { ...vehicle, ...json });
+        const imageId = await handleImageUpload(json.id, helpers);
+
+        onUpdate?.(vehicle, { ...vehicle, ...json, imageId });
       }
     } else {
       const path = isLeo ? "/search/actions/vehicle" : "/vehicles";
@@ -112,21 +114,50 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
       });
 
       if (json?.id) {
+        const imageId = await handleImageUpload(json.id, helpers);
+
         toastMessage({
           title: common("success"),
           message: tVehicle("successVehicleRegistered", { plate: values.plate.toUpperCase() }),
           icon: "success",
         });
-        onCreate?.(json);
+        onCreate?.({ ...json, imageId });
       }
     }
+  }
+
+  async function handleImageUpload(id: string, helpers: FormikHelpers<typeof INITIAL_VALUES>) {
+    const fd = new FormData();
+    const validatedImage = validateFile(image, helpers);
+
+    if (validatedImage) {
+      if (typeof validatedImage !== "string") {
+        fd.set("image", validatedImage, validatedImage.name);
+      }
+    }
+
+    if (validatedImage && typeof validatedImage === "object") {
+      const { json } = await execute<PostCitizenImageByIdData>({
+        path: `/vehicles/${id}`,
+        method: "POST",
+        data: fd,
+
+        headers: {
+          "content-type": "multipart/form-data",
+        },
+      });
+
+      return json.imageId;
+    }
+
+    return null;
   }
 
   const INITIAL_VALUES = {
     model: vehicle ? (CUSTOM_TEXTFIELD_VALUES ? vehicle.model.value.value : vehicle.modelId) : "",
     modelName: vehicle?.model.value.value ?? "",
     modelValue: vehicle?.model ?? null,
-    trimLevels: vehicle?.trimLevels?.map((v) => ({ label: v.value, value: v.id })) ?? [],
+    trimLevels: (vehicle?.trimLevels ?? []).map((v) => v.id),
 
     color: vehicle?.color ?? "",
     insuranceStatus: vehicle?.insuranceStatusId ?? null,
@@ -151,12 +182,14 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
     <Modal
       title={t("registerVehicle")}
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.RegisterVehicle)}
+      isOpen={modalState.isOpen(ModalIds.RegisterVehicle)}
       className="w-[700px]"
     >
       <Formik validate={validate} onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setFieldValue, setValues, errors, values, isValid }) => (
+        {({ setFieldValue, setValues, errors, values, isValid }) => (
           <Form>
+            <ImageSelectInput image={image} setImage={setImage} isOptional />
+
             <TextField
               errorMessage={errors.plate}
               label={tVehicle("plate")}
@@ -166,51 +199,45 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
               maxLength={maxPlateLength}
             />
 
-            {CUSTOM_TEXTFIELD_VALUES ? (
-              <FormField errorMessage={errors.model} label={tVehicle("model")}>
-                <Input
-                  list="vehicle-models-list"
-                  value={values.model}
-                  name="model"
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setValues({
-                      ...values,
-                      modelName: value,
-                      model: value,
-                    });
-                  }}
-                />
+            <AsyncListSearchField<VehicleValue>
+              allowsCustomValue={CUSTOM_TEXTFIELD_VALUES}
+              localValue={values.modelName}
+              onInputChange={(value) => {
+                setFieldValue("modelName", value);
+                if (CUSTOM_TEXTFIELD_VALUES && value) {
+                  setFieldValue("model", value);
+                }
+              }}
+              onSelectionChange={(node) => {
+                if (CUSTOM_TEXTFIELD_VALUES && node) {
+                  setValues({
+                    ...values,
+                    modelName: node.textValue,
+                    model: node.textValue,
+                  });
+                  return;
+                }
 
-                <datalist id="vehicle-models-list">
-                  {vehicles.values.map((vehicle) => (
-                    <span key={vehicle.id}>{vehicle.value.value}</span>
-                  ))}
-                </datalist>
-              </FormField>
-            ) : (
-              <AsyncListSearchField<VehicleValue>
-                localValue={values.modelName}
-                setValues={({ localValue, node }) => {
-                  const modelName =
-                    typeof localValue !== "undefined" ? { modelName: localValue } : {};
-                  const model = node ? { model: node.key as string, modelValue: node.value } : {};
-
-                  setValues({ ...values, ...modelName, ...model });
-                }}
-                errorMessage={errors.model}
-                label={tVehicle("model")}
-                selectedKey={values.model}
-                fetchOptions={{
-                  apiPath: (value) => `/admin/values/vehicle/search?query=${value}`,
-                  method: "GET",
-                }}
-              >
-                {(item) => {
-                  return <Item textValue={item.value.value}>{item.value.value}</Item>;
-                }}
-              </AsyncListSearchField>
-            )}
+                if (node) {
+                  setValues({
+                    ...values,
+                    modelName: node.value?.value.value ?? node.textValue,
+                    model: node.key as string,
+                  });
+                }
+              }}
+              errorMessage={errors.model}
+              label={tVehicle("model")}
+              selectedKey={values.model}
+              fetchOptions={{
+                apiPath: (value) => `/admin/values/vehicle/search?query=${value}`,
+                method: "GET",
+              }}
+            >
+              {(item) => {
+                return <Item textValue={item.value.value}>{item.value.value}</Item>;
+              }}
+            </AsyncListSearchField>
 
             <CitizenSuggestionsField
               isOptional={isLeo}
@@ -230,21 +257,16 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
               value={values.color}
             />
 
-            <FormField label={tVehicle("trimLevels")}>
-              <Select
-                name="trimLevels"
-                value={values.trimLevels}
-                isMulti
-                closeMenuOnSelect={false}
-                onChange={handleChange}
-                values={
-                  values.modelValue?.trimLevels?.map((value) => ({
-                    label: value.value,
-                    value: value.id,
-                  })) ?? []
-                }
-              />
-            </FormField>
+            <SelectField
+              label={tVehicle("trimLevels")}
+              selectionMode="multiple"
+              selectedKeys={values.trimLevels}
+              onSelectionChange={(keys) => setFieldValue("trimLevels", keys)}
+              options={(values.modelValue?.trimLevels ?? []).map((value) => ({
+                label: value.value,
+                value: value.id,
+              }))}
+            />
 
             <TextField
               errorMessage={errors.vinNumber}
@@ -301,22 +323,20 @@ export function RegisterVehicleModal({ vehicle, onClose, onCreate, onUpdate }: P
 
             {vehicle ? (
               <FormRow>
-                <FormField errorMessage={errors.reportedStolen} label={tVehicle("reportAsStolen")}>
-                  <Toggle
-                    onCheckedChange={handleChange}
-                    name="reportedStolen"
-                    value={values.reportedStolen}
-                  />
-                </FormField>
+                <SwitchField
+                  isSelected={values.reportedStolen}
+                  onChange={(isSelected) => setFieldValue("reportedStolen", isSelected)}
+                >
+                  {tVehicle("reportAsStolen")}
+                </SwitchField>
 
-                <FormField errorMessage={errors.reApplyForDmv} label={tVehicle("reApplyForDmv")}>
-                  <Toggle
-                    disabled={vehicle.dmvStatus !== WhitelistStatus.DECLINED}
-                    onCheckedChange={handleChange}
-                    name="reApplyForDmv"
-                    value={values.reApplyForDmv ?? false}
-                  />
-                </FormField>
+                <SwitchField
+                  isSelected={values.reApplyForDmv}
+                  onChange={(isSelected) => setFieldValue("reApplyForDmv", isSelected)}
+                  isDisabled={vehicle.dmvStatus !== WhitelistStatus.DECLINED}
+                >
+                  {tVehicle("reApplyForDmv")}
+                </SwitchField>
               </FormRow>
             ) : null}
 

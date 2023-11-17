@@ -7,7 +7,7 @@ export const OFFICER = {
   callsign: "E",
   callsign2: "92",
   citizen: { name: "john", surname: "doe" },
-  badgeNumber: 6034,
+  badgeNumberString: "6034",
   department: { value: { value: "LSPD" }, callsign: "A" },
   divisions: [{ value: { value: "Patrol" }, callsign: "P" }],
   citizenId: "xxxxx",
@@ -17,7 +17,7 @@ export const EMS_FD_DEPUTY = {
   callsign: "E",
   callsign2: "92",
   citizen: { name: "john", surname: "doe" },
-  badgeNumber: 6034,
+  badgeNumberString: "6034",
   department: { value: { value: "LSPD" }, callsign: "A" },
   division: { value: { value: "Patrol" }, callsign: "P" },
   citizenId: "xxxxx",
@@ -57,6 +57,12 @@ test(`should generate paired unit callsign template: ${COMBINED_UNIT_WITH_TEMPLA
   ).toMatchInlineSnapshot('"TROJAN-2"');
 });
 
-test(`should return "" if template === null`, () => {
+test("should return an empty string if template === null", () => {
   expect(generateCallsign(COMBINED_UNIT, null)).toMatchInlineSnapshot('""');
+});
+
+test("should generate callsign from user defined callsign (Combined Units)", () => {
+  expect(
+    generateCallsign({ ...COMBINED_UNIT, userDefinedCallsign: "TEST" }, null),
+  ).toMatchInlineSnapshot('"TEST"');
 });

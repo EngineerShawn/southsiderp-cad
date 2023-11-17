@@ -3,46 +3,29 @@ import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { NotFound, InternalServerError, BadRequest } from "@tsed/exceptions";
 import { QueryParams, BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { leoProperties, unitProperties, _leoProperties } from "lib/leo/activeOfficer";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { leoProperties, _leoProperties, assignedUnitsInclude } from "utils/leo/includes";
 import { LEO_INCIDENT_SCHEMA } from "@snailycad/schemas";
 import { ActiveOfficer } from "middlewares/active-officer";
-import type { Officer, MiscCadSettings, CombinedLeoUnit } from "@prisma/client";
+import {
+  type Officer,
+  type MiscCadSettings,
+  type CombinedLeoUnit,
+  DiscordWebhookType,
+} from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { Socket } from "services/socket-service";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { officerOrDeputyToUnit } from "lib/leo/officerOrDeputyToUnit";
 import { findUnit } from "lib/leo/findUnit";
-import { getFirstOfficerFromActiveOfficer, getInactivityFilter } from "lib/leo/utils";
+import { getUserOfficerFromActiveOfficer, getInactivityFilter } from "lib/leo/utils";
 import type * as APITypes from "@snailycad/types/api";
 import { getNextIncidentId } from "lib/incidents/get-next-incident-id";
 import { assignUnitsInvolvedToIncident } from "lib/incidents/handle-involved-units";
-import { cad } from "@snailycad/types";
-
-export const assignedUnitsInclude = {
-  include: {
-    officer: { include: _leoProperties },
-    deputy: { include: unitProperties },
-    combinedUnit: {
-      include: {
-        status: { include: { value: true } },
-        department: { include: { value: true } },
-        officers: {
-          include: _leoProperties,
-        },
-      },
-    },
-    combinedEmsFdUnit: {
-      include: {
-        status: { include: { value: true } },
-        department: { include: { value: true } },
-        deputies: {
-          include: unitProperties,
-        },
-      },
-    },
-  },
-};
+import { User, type cad } from "@snailycad/types";
+import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
+import { createIncidentWebhookData } from "~/controllers/ems-fd/incidents/ems-fd-incidents-controller";
+import { sendDiscordWebhook } from "~/lib/discord/webhooks";
 
 export const incidentInclude = {
   creator: { include: leoProperties },
@@ -66,7 +49,6 @@ export class IncidentController {
   @Description("Get all the created incidents")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ViewIncidents, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async getAllIncidents(
     @Context("cad") cad: cad,
@@ -115,7 +97,6 @@ export class IncidentController {
   @Description("Get an incident by its id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ViewIncidents, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async getIncidentById(
     @PathParams("id") id: string,
@@ -132,15 +113,20 @@ export class IncidentController {
   @Post("/")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async createIncident(
     @BodyParams() body: unknown,
     @Context("cad") cad: { miscCadSettings: MiscCadSettings },
     @Context("activeOfficer") activeOfficer: (CombinedLeoUnit & { officers: Officer[] }) | Officer,
+    @Context("sessionUserId") sessionUserId: string,
+    @Context("user") user: User,
   ): Promise<APITypes.PostIncidentsData<"leo">> {
     const data = validateSchema(LEO_INCIDENT_SCHEMA, body);
-    const officer = getFirstOfficerFromActiveOfficer({ allowDispatch: true, activeOfficer });
+    const officer = getUserOfficerFromActiveOfficer({
+      userId: sessionUserId,
+      allowDispatch: true,
+      activeOfficer,
+    });
     const maxAssignmentsToIncidents = cad.miscCadSettings.maxAssignmentsToIncidents ?? Infinity;
 
     const incident = await prisma.leoIncident.create({
@@ -186,12 +172,19 @@ export class IncidentController {
       await this.socket.emitUpdateOfficerStatus();
     }
 
+    const webhookData = await createIncidentWebhookData(corrected, user.locale ?? "en");
+    await sendDiscordWebhook({
+      data: webhookData,
+      type: DiscordWebhookType.LEO_INCIDENT_CREATED,
+      extraMessageData: { userDiscordId: user.discordId },
+    });
+
     return corrected;
   }
 
   @Post("/:type/:incidentId")
+  @Description("Assign or unassign a unit from an Active Incident")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
   })
   async assignToIncident(
@@ -291,11 +284,40 @@ export class IncidentController {
     return normalizedIncident;
   }
 
+  @Delete("/purge")
+  @UsePermissions({
+    permissions: [Permissions.PurgeLeoIncidents],
+  })
+  async purgeIncidents(
+    @BodyParams("ids") ids: string[],
+    @Context("sessionUserId") sessionUserId: string,
+  ) {
+    if (!Array.isArray(ids)) return false;
+
+    await Promise.all(
+      ids.map(async (id) => {
+        const event = await prisma.leoIncident.delete({
+          where: { id },
+        });
+
+        this.socket.emitUpdateActiveIncident({ ...event, isActive: false });
+      }),
+    );
+
+    await createAuditLogEntry({
+      translationKey: "leoIncidentsPurged",
+      action: { type: AuditLogActionType.LeoIncidentsPurged, new: ids },
+      executorId: sessionUserId,
+      prisma,
+    });
+
+    return true;
+  }
+
   @UseBefore(ActiveOfficer)
   @Put("/:id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async updateIncident(
     @BodyParams() body: unknown,
@@ -356,7 +378,6 @@ export class IncidentController {
   @Description("Delete an incident by its id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageIncidents],
-    fallback: (u) => u.isSupervisor,
   })
   async deleteIncident(
     @PathParams("id") incidentId: string,

@@ -1,5 +1,5 @@
 import { useTranslations } from "use-intl";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate, Status } from "@snailycad/ui";
 import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
@@ -8,10 +8,8 @@ import type { GetServerSideProps } from "next";
 import { WhitelistStatus } from "@snailycad/types";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { Title } from "components/shared/Title";
-import { FullDate } from "components/shared/FullDate";
 import { Permissions } from "hooks/usePermission";
 import useFetch from "lib/useFetch";
-import { Status } from "components/shared/Status";
 import type { PostBOFData, GetPendingBOFWeapons } from "@snailycad/types/api";
 import { useInvalidateQuery } from "hooks/use-invalidate-query";
 
@@ -39,13 +37,13 @@ export default function BureauOfFirearms({ data }: Props) {
   const tableState = useTableState({ pagination: asyncTable.pagination });
 
   async function handleAcceptOrDecline(id: string, type: "ACCEPT" | "DECLINE") {
-    const { json } = await execute<PostBOFData>({
+    const { json } = await execute<PostBOFData | null>({
       path: `/leo/bureau-of-firearms/${id}`,
       method: "POST",
       data: { type },
     });
 
-    if (json) {
+    if (json?.id) {
       await invalidateQuery();
       asyncTable.update(id, json);
     }
@@ -54,7 +52,6 @@ export default function BureauOfFirearms({ data }: Props) {
   return (
     <Layout
       permissions={{
-        fallback: (u) => u.isLeo,
         permissions: [Permissions.ManageBureauOfFirearms],
       }}
       className="dark:text-white"

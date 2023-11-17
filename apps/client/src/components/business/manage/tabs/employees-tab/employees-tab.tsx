@@ -1,37 +1,35 @@
 import { useTranslations } from "use-intl";
-import { Button, TabsContent } from "@snailycad/ui";
-import { FullEmployee, useBusinessState } from "state/business-state";
+import { Button, Status, TabsContent } from "@snailycad/ui";
+import { type FullEmployee, useBusinessState } from "state/business-state";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { ManageEmployeeModal } from "./manage-employee-modal";
-import { Employee, EmployeeAsEnum, WhitelistStatus } from "@snailycad/types";
+import { type Employee, EmployeeAsEnum, WhitelistStatus } from "@snailycad/types";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
 import { Table, useTableState } from "components/shared/Table";
 import { yesOrNoText } from "lib/utils";
-import { Status } from "components/shared/Status";
 import type { DeleteBusinessFireEmployeeData } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
-import { shallow } from "zustand/shallow";
 
 export function EmployeesTab() {
   const { state, execute } = useFetch();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Business");
 
-  const { currentBusiness, currentEmployee, setCurrentBusiness } = useBusinessState(
-    (state) => ({
-      currentBusiness: state.currentBusiness,
-      currentEmployee: state.currentEmployee,
-      setCurrentBusiness: state.setCurrentBusiness,
-    }),
-    shallow,
-  );
+  const { currentBusiness, currentEmployee, setCurrentBusiness } = useBusinessState((state) => ({
+    currentBusiness: state.currentBusiness,
+    currentEmployee: state.currentEmployee,
+    setCurrentBusiness: state.setCurrentBusiness,
+  }));
 
   const employees = currentBusiness?.employees ?? [];
   const [tempEmployee, employeeState] = useTemporaryItem(employees);
-  const tableState = useTableState();
+  const tableState = useTableState({
+    tableId: "business-employees",
+    pagination: { pageSize: 25, totalDataCount: currentBusiness?.employees.length ?? 0 },
+  });
 
   function handleUpdate(old: FullEmployee, newE: FullEmployee) {
     if (!currentBusiness) return;
@@ -63,20 +61,20 @@ export function EmployeesTab() {
         employees: currentBusiness.employees.filter((v) => v.id !== tempEmployee.id),
       });
       employeeState.setTempId(null);
-      closeModal(ModalIds.AlertFireEmployee);
+      modalState.closeModal(ModalIds.AlertFireEmployee);
     }
   }
 
   function handleManageClick(employee: Employee) {
     if (employee.role?.as === EmployeeAsEnum.OWNER) return;
     employeeState.setTempId(employee.id);
-    openModal(ModalIds.ManageEmployee);
+    modalState.openModal(ModalIds.ManageEmployee);
   }
 
   function handleFireClick(employee: Employee) {
     if (employee.role?.as === EmployeeAsEnum.OWNER) return;
     employeeState.setTempId(employee.id);
-    openModal(ModalIds.AlertFireEmployee);
+    modalState.openModal(ModalIds.AlertFireEmployee);
   }
 
   return (

@@ -1,4 +1,5 @@
 import { defaultPermissions, Permissions } from "@snailycad/permissions";
+import { useTranslations } from "use-intl";
 
 const DEPRECATED_PERMISSIONS = [
   Permissions.ViewDLExams,
@@ -11,49 +12,63 @@ const filteredAdminPermissions = defaultPermissions.allDefaultAdminPermissions.f
   (p) => !defaultPermissions.defaultCourthousePermissions.includes(p),
 );
 
-const groups = [
-  {
-    name: "Admin",
-    permissions: filteredAdminPermissions,
-  },
-  {
-    name: "Courthouse (Admin)",
-    permissions: defaultPermissions.defaultCourthousePermissions,
-  },
-  {
-    name: "LEO",
-    permissions: defaultPermissions.defaultLeoPermissions,
-  },
-  {
-    name: "Dispatch",
-    permissions: defaultPermissions.defaultDispatchPermissions,
-  },
-  {
-    name: "EMS/FD",
-    permissions: defaultPermissions.defaultEmsFdPermissions,
-  },
-  {
-    name: "Citizen related",
-    permissions: [
-      ...defaultPermissions.defaultTowPermissions,
-      ...defaultPermissions.defaultTaxiPermissions,
-    ],
-  },
-  {
-    name: "Other",
-    permissions: defaultPermissions.otherDefaultPermissions,
-  },
-  {
-    name: "Owner",
-    permissions: [Permissions.ManageCADSettings],
-  },
-];
-
 interface UsePermissionsModalOptions {
   isReadOnly?: boolean;
 }
 
 export function usePermissionsModal(options: UsePermissionsModalOptions) {
+  const t = useTranslations("Permissions");
+
+  const groups = [
+    {
+      name: t("admin"),
+      permissions: filteredAdminPermissions,
+    },
+    {
+      name: t("courthouseAdmin"),
+      permissions: defaultPermissions.defaultCourthousePermissions,
+    },
+    {
+      name: t("leo"),
+      permissions: [
+        ...defaultPermissions.defaultLeoPermissions,
+        Permissions.SetUserDefinedCallsignOnOfficer,
+        Permissions.PurgeLeoIncidents,
+      ],
+    },
+    {
+      name: t("dispatch"),
+      permissions: [
+        ...defaultPermissions.defaultDispatchPermissions,
+        Permissions.ManageSmartSigns,
+        Permissions.ManageSmartMotorwaySigns,
+      ],
+    },
+    {
+      name: t("emsFd"),
+      permissions: [
+        ...defaultPermissions.defaultEmsFdPermissions,
+        Permissions.SetUserDefinedCallsignOnEmsFd,
+        Permissions.PurgeEmsFdIncidents,
+      ],
+    },
+    {
+      name: t("citizenRelated"),
+      permissions: [
+        ...defaultPermissions.defaultTowPermissions,
+        ...defaultPermissions.defaultTaxiPermissions,
+      ],
+    },
+    {
+      name: t("owner"),
+      permissions: [
+        Permissions.ManageCADSettings,
+        Permissions.DeleteRegisteredVehicles,
+        Permissions.DeleteRegisteredWeapons,
+      ],
+    },
+  ];
+
   function handleToggleAll(
     group: (typeof groups)[number],
     values: Record<Permissions, boolean>,

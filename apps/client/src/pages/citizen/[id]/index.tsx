@@ -6,11 +6,22 @@ import type { GetServerSideProps } from "next";
 import { getSessionUser } from "lib/auth";
 import { Layout } from "components/Layout";
 import { useModal } from "state/modalState";
-import { BreadcrumbItem, Breadcrumbs, Button } from "@snailycad/ui";
+import {
+  BreadcrumbItem,
+  Breadcrumbs,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuTrigger,
+  FullDate,
+  Infofield,
+} from "@snailycad/ui";
 import useFetch from "lib/useFetch";
 import { getTranslations } from "lib/getTranslation";
 import { VehiclesCard } from "components/citizen/vehicles/vehicles-card";
-import { LicensesCard } from "components/citizen/licenses/LicensesCard";
+import { LicensesCard } from "components/citizen/licenses/licenses-card";
 import { MedicalRecords } from "components/citizen/medical-records/medical-records";
 import { calculateAge, formatCitizenAddress, requestAll } from "lib/utils";
 import { useCitizen } from "context/CitizenContext";
@@ -18,12 +29,9 @@ import dynamic from "next/dynamic";
 import { useImageUrl } from "hooks/useImageUrl";
 import { useAuth } from "context/AuthContext";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { Infofield } from "components/shared/Infofield";
 import { Title } from "components/shared/Title";
-import { ModalIds } from "types/ModalIds";
-import { FullDate } from "components/shared/FullDate";
+import { ModalIds } from "types/modal-ids";
 import type { DeleteCitizenByIdData } from "@snailycad/types/api";
-import { Dropdown } from "components/Dropdown";
 import { ImageWrapper } from "components/shared/image-wrapper";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import { ValueType } from "@snailycad/types";
@@ -31,7 +39,7 @@ import { CitizenRecordsCard } from "components/citizen/records/citizen-records-c
 
 const AlertModal = dynamic(async () => (await import("components/modal/AlertModal")).AlertModal);
 const CitizenImageModal = dynamic(
-  async () => (await import("components/citizen/modals/CitizenImageModal")).CitizenImageModal,
+  async () => (await import("components/citizen/modals/citizen-image-modal")).CitizenImageModal,
 );
 const WeaponsCard = dynamic(
   async () => (await import("components/citizen/weapons/weapons-card")).WeaponsCard,
@@ -43,7 +51,7 @@ export default function CitizenId() {
   });
 
   const { execute, state } = useFetch();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Citizen");
   const common = useTranslations("Common");
   const router = useRouter();
@@ -61,7 +69,7 @@ export default function CitizenId() {
     });
 
     if (typeof data.json === "boolean" && data.json) {
-      closeModal(ModalIds.AlertDeleteCitizen);
+      modalState.closeModal(ModalIds.AlertDeleteCitizen);
       router.push("/citizen");
     }
   }
@@ -74,7 +82,7 @@ export default function CitizenId() {
     });
 
     if (typeof data.json === "boolean" && data.json) {
-      closeModal(ModalIds.AlertMarkDeceased);
+      modalState.closeModal(ModalIds.AlertMarkDeceased);
       setCurrentCitizen({ ...citizen, dead: true, dateOfDead: new Date() });
     }
   }
@@ -122,7 +130,7 @@ export default function CitizenId() {
           {citizen.imageId ? (
             <button
               type="button"
-              onClick={() => openModal(ModalIds.CitizenImage)}
+              onClick={() => modalState.openModal(ModalIds.CitizenImage)}
               className="cursor-pointer"
               aria-label="View citizen image"
             >
@@ -191,12 +199,9 @@ export default function CitizenId() {
         </div>
 
         <div>
-          <Dropdown
-            alignOffset={0}
-            align="end"
-            className="dropdown-right"
-            trigger={
-              <Button className="flex items-center justify-center w-9 h-9">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="xs" className="flex items-center justify-center w-9 h-9">
                 <ThreeDots
                   aria-label="Options"
                   width={17}
@@ -204,32 +209,34 @@ export default function CitizenId() {
                   className="text-neutral-800 dark:text-gray-300"
                 />
               </Button>
-            }
-          >
-            <Dropdown.LinkItem href={`/citizen/${citizen.id}/edit`}>
-              {t("editCitizen")}
-            </Dropdown.LinkItem>
+            </DropdownMenuTrigger>
 
-            {ALLOW_CITIZEN_DELETION_BY_NON_ADMIN ? (
-              <>
-                <Dropdown.Item
-                  onPress={() => openModal(ModalIds.AlertDeleteCitizen)}
-                  variant="danger"
-                >
-                  {t("deleteCitizen")}
-                </Dropdown.Item>
+            <DropdownMenuContent alignOffset={0} align="end">
+              <DropdownMenuLinkItem href={`/citizen/${citizen.id}/edit`}>
+                {t("editCitizen")}
+              </DropdownMenuLinkItem>
 
-                {!citizen.dead ? (
-                  <Dropdown.Item
-                    onPress={() => openModal(ModalIds.AlertMarkDeceased)}
+              {ALLOW_CITIZEN_DELETION_BY_NON_ADMIN ? (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => modalState.openModal(ModalIds.AlertDeleteCitizen)}
                     variant="danger"
                   >
-                    {t("markCitizenDeceased")}
-                  </Dropdown.Item>
-                ) : null}
-              </>
-            ) : null}
-          </Dropdown>
+                    {t("deleteCitizen")}
+                  </DropdownMenuItem>
+
+                  {!citizen.dead ? (
+                    <DropdownMenuItem
+                      onClick={() => modalState.openModal(ModalIds.AlertMarkDeceased)}
+                      variant="danger"
+                    >
+                      {t("markCitizenDeceased")}
+                    </DropdownMenuItem>
+                  ) : null}
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

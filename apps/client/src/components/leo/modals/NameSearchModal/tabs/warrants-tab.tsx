@@ -1,7 +1,7 @@
 import compareDesc from "date-fns/compareDesc";
 import { useTranslations } from "use-intl";
-import { SelectField, Button, TabsContent } from "@snailycad/ui";
-import { ModalIds } from "types/ModalIds";
+import { SelectField, Button, TabsContent, FullDate } from "@snailycad/ui";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
@@ -9,12 +9,11 @@ import { useNameSearch } from "state/search/name-search-state";
 import { makeUnitName } from "lib/utils";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { Table, useTableState } from "components/shared/Table";
-import { FullDate } from "components/shared/FullDate";
-import { Warrant, WarrantStatus } from "@snailycad/types";
+import { type Warrant, WarrantStatus } from "@snailycad/types";
 import type { DeleteRecordsByIdData, PutWarrantsData } from "@snailycad/types/api";
 import { Permissions, usePermission } from "hooks/usePermission";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { shallow } from "zustand/shallow";
+import { CallDescription } from "components/dispatch/active-calls/CallDescription";
 
 const values = [
   { label: "Inactive", value: WarrantStatus.INACTIVE },
@@ -23,37 +22,27 @@ const values = [
 
 export function NameSearchWarrantsTab() {
   const common = useTranslations("Common");
-  const { openModal, closeModal, getPayload } = useModal();
+  const modalState = useModal();
   const t = useTranslations();
   const { generateCallsign } = useGenerateCallsign();
   const { state, execute } = useFetch();
-  const { currentResult, setCurrentResult } = useNameSearch(
-    (state) => ({
-      currentResult: state.currentResult,
-      setCurrentResult: state.setCurrentResult,
-    }),
-    shallow,
-  );
+  const { currentResult, setCurrentResult } = useNameSearch((state) => ({
+    currentResult: state.currentResult,
+    setCurrentResult: state.setCurrentResult,
+  }));
   const tableState = useTableState();
   const { WARRANT_STATUS_APPROVAL } = useFeatureEnabled();
 
   const { hasPermissions } = usePermission();
-  const hasManageWarrantsPermissions = hasPermissions(
-    [Permissions.ManageWarrants],
-    (u) => u.isLeo || u.isSupervisor,
-  );
-
-  const hasManagePendingWarrantsPermissions = hasPermissions(
-    [Permissions.ManagePendingWarrants],
-    (u) => u.isSupervisor,
-  );
+  const hasManageWarrantsPermissions = hasPermissions([Permissions.ManageWarrants]);
+  const hasManagePendingWarrantsPermissions = hasPermissions([Permissions.ManagePendingWarrants]);
 
   const hasManagePermissions = WARRANT_STATUS_APPROVAL
     ? hasManagePendingWarrantsPermissions
     : hasManageWarrantsPermissions;
 
   async function handleDelete() {
-    const warrant = getPayload<Warrant>(ModalIds.AlertRevokeWarrant);
+    const warrant = modalState.getPayload<Warrant>(ModalIds.AlertRevokeWarrant);
     if (!warrant) return;
     if (!currentResult || currentResult.isConfidential) return;
 
@@ -68,12 +57,12 @@ export function NameSearchWarrantsTab() {
         ...currentResult,
         warrants: currentResult.warrants.filter((v) => v.id !== warrant.id),
       });
-      closeModal(ModalIds.AlertRevokeWarrant);
+      modalState.closeModal(ModalIds.AlertRevokeWarrant);
     }
   }
 
   function handleDeleteClick(warrant: Warrant) {
-    openModal(ModalIds.AlertRevokeWarrant, warrant);
+    modalState.openModal(ModalIds.AlertRevokeWarrant, warrant);
   }
 
   async function handleChange(value: string, warrant: Warrant) {
@@ -122,7 +111,7 @@ export function NameSearchWarrantsTab() {
                   officer: warrant.officer
                     ? `${generateCallsign(warrant.officer)} ${makeUnitName(warrant.officer)}`
                     : "—",
-                  description: warrant.description,
+                  description: <CallDescription data={warrant} />,
                   createdAt: <FullDate>{warrant.createdAt}</FullDate>,
                   status: warrant.status,
                   actions: hasManageWarrantsPermissions ? (

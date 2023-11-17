@@ -23,7 +23,6 @@ export const Feature = {
   ALLOW_CITIZEN_DELETION_BY_NON_ADMIN: "ALLOW_CITIZEN_DELETION_BY_NON_ADMIN",
   DMV: "DMV",
   BADGE_NUMBERS: "BADGE_NUMBERS",
-  USER_API_TOKENS: "USER_API_TOKENS",
   CITIZEN_RECORD_APPROVAL: "CITIZEN_RECORD_APPROVAL",
   COMMON_CITIZEN_CARDS: "COMMON_CITIZEN_CARDS",
   STEAM_OAUTH: "STEAM_OAUTH",
@@ -47,6 +46,15 @@ export const Feature = {
   EDITABLE_VIN: "EDITABLE_VIN",
   SIGNAL_100_CITIZEN: "SIGNAL_100_CITIZEN",
   FORCE_ACCOUNT_PASSWORD: "FORCE_ACCOUNT_PASSWORD",
+  USER_DEFINED_CALLSIGN_COMBINED_UNIT: "USER_DEFINED_CALLSIGN_COMBINED_UNIT",
+  HOSPITAL_SERVICES: "HOSPITAL_SERVICES",
+  MEDICAL_RECORDS_CITIZEN_MANAGEABLE: "MEDICAL_RECORDS_CITIZEN_MANAGEABLE",
+  PETS: "PETS",
+  REQUIRED_CITIZEN_IMAGE: "REQUIRED_CITIZEN_IMAGE",
+  LEO_EDITABLE_CITIZEN_PROFILE: "LEO_EDITABLE_CITIZEN_PROFILE",
+  ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER: "ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER",
+  OPEN_LAW_BOOK: "OPEN_LAW_BOOK",
+  CITIZEN_RECORD_PAYMENTS: "CITIZEN_RECORD_PAYMENTS",
 } as const;
 
 export type Feature = (typeof Feature)[keyof typeof Feature];
@@ -67,6 +75,12 @@ export const DiscordWebhookType = {
   CITIZEN_RECORD: "CITIZEN_RECORD",
   VEHICLE_IMPOUNDED: "VEHICLE_IMPOUNDED",
   WARRANTS: "WARRANTS",
+  BLEETER_POST: "BLEETER_POST",
+  CITIZEN_DECLARED_DEAD: "CITIZEN_DECLARED_DEAD",
+  DEPARTMENT_WHITELIST_STATUS: "DEPARTMENT_WHITELIST_STATUS",
+  USER_WHITELIST_STATUS: "USER_WHITELIST_STATUS",
+  LEO_INCIDENT_CREATED: "LEO_INCIDENT_CREATED",
+  EMS_FD_INCIDENT_CREATED: "EMS_FD_INCIDENT_CREATED",
 } as const;
 
 export type DiscordWebhookType = (typeof DiscordWebhookType)[keyof typeof DiscordWebhookType];
@@ -141,6 +155,7 @@ export const ValueType = {
   EMERGENCY_VEHICLE: "EMERGENCY_VEHICLE",
   ADDRESS_FLAG: "ADDRESS_FLAG",
   VEHICLE_TRIM_LEVEL: "VEHICLE_TRIM_LEVEL",
+  WEAPON_FLAG: "WEAPON_FLAG",
 } as const;
 
 export type ValueType = (typeof ValueType)[keyof typeof ValueType];
@@ -165,6 +180,9 @@ export const DriversLicenseCategoryType = {
   AVIATION: "AVIATION",
   WATER: "WATER",
   FIREARM: "FIREARM",
+  HUNTING: "HUNTING",
+  FISHING: "FISHING",
+  OTHER: "OTHER",
 } as const;
 
 export type DriversLicenseCategoryType =
@@ -274,6 +292,8 @@ export const LicenseExamType = {
   FIREARM: "FIREARM",
   WATER: "WATER",
   PILOT: "PILOT",
+  HUNTING: "HUNTING",
+  FISHING: "FISHING",
 } as const;
 
 export type LicenseExamType = (typeof LicenseExamType)[keyof typeof LicenseExamType];
@@ -308,3 +328,31 @@ export const ActiveToneType = {
 } as const;
 
 export type ActiveToneType = (typeof ActiveToneType)[keyof typeof ActiveToneType];
+
+export const CourthouseType = {
+  EXPUNGEMENT_REQUEST: "EXPUNGEMENT_REQUEST",
+  NAME_CHANGE_REQUEST: "NAME_CHANGE_REQUEST",
+} as const;
+
+export type CourthouseType = (typeof CourthouseType)[keyof typeof CourthouseType];
+
+export const DashboardLayoutCardType = {
+  ACTIVE_CALLS: "ACTIVE_CALLS",
+  ACTIVE_BOLOS: "ACTIVE_BOLOS",
+  ACTIVE_WARRANTS: "ACTIVE_WARRANTS",
+  ACTIVE_OFFICERS: "ACTIVE_OFFICERS",
+  ACTIVE_DEPUTIES: "ACTIVE_DEPUTIES",
+  ACTIVE_INCIDENTS: "ACTIVE_INCIDENTS",
+} as const;
+
+export type DashboardLayoutCardType =
+  (typeof DashboardLayoutCardType)[keyof typeof DashboardLayoutCardType];
+
+export const VehiclePaceType = {
+  PACE: "PACE",
+  RADAR: "RADAR",
+  LASER: "LASER",
+  OTHER: "OTHER",
+} as const;
+
+export type VehiclePaceType = (typeof VehiclePaceType)[keyof typeof VehiclePaceType];

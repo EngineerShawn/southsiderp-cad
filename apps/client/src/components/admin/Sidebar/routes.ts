@@ -1,5 +1,5 @@
 import { defaultPermissions, Permissions } from "@snailycad/permissions";
-import { Feature, ValueType } from "@snailycad/types";
+import { type Feature, ValueType } from "@snailycad/types";
 
 export interface SidebarRoute {
   permissions: Permissions[];
@@ -150,6 +150,11 @@ export const valueRoutes: SidebarRoute[] = [
   {
     type: ValueType.WEAPON,
     permissions: [Permissions.ManageValueWeapon],
+    hidden: ({ WEAPON_REGISTRATION }) => !WEAPON_REGISTRATION,
+  },
+  {
+    type: ValueType.WEAPON_FLAG,
+    permissions: [Permissions.ManageValueWeaponFlag],
     hidden: ({ WEAPON_REGISTRATION }) => !WEAPON_REGISTRATION,
   },
 ];

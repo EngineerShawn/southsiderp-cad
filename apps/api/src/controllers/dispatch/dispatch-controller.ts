@@ -5,21 +5,13 @@ import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
 import { Socket } from "services/socket-service";
 import { UseAfter, UseBeforeEach } from "@tsed/platform-middlewares";
-import { IsAuth } from "middlewares/is-auth";
-import { cad, Feature, MiscCadSettings, ShouldDoType, User } from "@snailycad/types";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { type cad, Feature, type MiscCadSettings, ShouldDoType, type User } from "@snailycad/types";
 import { validateSchema } from "lib/data/validate-schema";
 import { TONES_SCHEMA, UPDATE_AOP_SCHEMA, UPDATE_RADIO_CHANNEL_SCHEMA } from "@snailycad/schemas";
-import {
-  leoProperties,
-  unitProperties,
-  combinedUnitProperties,
-  getActiveOfficer,
-  combinedEmsFdUnitProperties,
-} from "lib/leo/activeOfficer";
+import { getActiveOfficer } from "lib/leo/activeOfficer";
 import { ExtendedNotFound } from "src/exceptions/extended-not-found";
-import { incidentInclude } from "controllers/leo/incidents/IncidentController";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
-import { officerOrDeputyToUnit } from "lib/leo/officerOrDeputyToUnit";
 import { findUnit } from "lib/leo/findUnit";
 import { getInactivityFilter } from "lib/leo/utils";
 import { getActiveDeputy } from "lib/get-active-ems-fd-deputy";
@@ -29,6 +21,13 @@ import { z } from "zod";
 import { ActiveToneType } from "@prisma/client";
 import { HandleInactivity } from "middlewares/handle-inactivity";
 import { createWhere, createWhereCombinedUnit } from "controllers/leo/create-where-obj";
+import {
+  leoProperties,
+  unitProperties,
+  combinedUnitProperties,
+  combinedEmsFdUnitProperties,
+} from "utils/leo/includes";
+import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
 
 @Controller("/dispatch")
 @UseBeforeEach(IsAuth)
@@ -41,7 +40,6 @@ export class DispatchController {
 
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isEmsFd || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
   })
   @UseAfter(HandleInactivity)
@@ -54,41 +52,28 @@ export class DispatchController {
       "activeDispatchersInactivityTimeout",
       "updatedAt",
     );
-    const incidentInactivityFilter = getInactivityFilter(cad, "incidentInactivityTimeout");
 
-    const [activeDispatchersCount, userActiveDispatcher, activeIncidents] =
-      await prisma.$transaction([
-        prisma.activeDispatchers.count({
-          where: dispatcherInactivityTimeout?.filter,
-        }),
-        prisma.activeDispatchers.findFirst({
-          where: {
-            userId: sessionUserId,
-            ...(dispatcherInactivityTimeout?.filter ?? {}),
-          },
-          include: {
-            department: { include: { value: true } },
-            user: { select: { username: true, id: true } },
-          },
-        }),
-        prisma.leoIncident.findMany({
-          where: { isActive: true, ...(incidentInactivityFilter?.filter ?? {}) },
-          include: incidentInclude,
-        }),
-      ]);
-
-    const correctedIncidents = activeIncidents.map(officerOrDeputyToUnit);
+    const [activeDispatchersCount, userActiveDispatcher] = await prisma.$transaction([
+      prisma.activeDispatchers.count({
+        where: dispatcherInactivityTimeout?.filter,
+      }),
+      prisma.activeDispatchers.findFirst({
+        where: { userId: sessionUserId, ...(dispatcherInactivityTimeout?.filter ?? {}) },
+        include: {
+          department: { include: { value: true } },
+          user: { select: { username: true, id: true } },
+        },
+      }),
+    ]);
 
     return {
       areaOfPlay: cad.areaOfPlay || null,
-      activeIncidents: correctedIncidents,
       activeDispatchersCount,
       userActiveDispatcher,
     };
   }
 
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isEmsFd || u.isLeo,
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
   })
   @Post("/units/search")
@@ -153,7 +138,6 @@ export class DispatchController {
   @Post("/aop")
   @Description("Update the AOP in the CAD")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async updateAreaOfPlay(
@@ -180,12 +164,12 @@ export class DispatchController {
   @Post("/signal-100")
   @Description("Enable or disable signal 100")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async setSignal100(
     @Context("cad") cad: cad,
-    @BodyParams("value") value: boolean,
+    @Context("sessionUserId") sessionUserId: string,
+    @BodyParams("value") value?: boolean,
     @BodyParams("callId") callId?: string,
   ): Promise<APITypes.PostDispatchSignal100Data> {
     if (typeof value !== "boolean") {
@@ -199,6 +183,15 @@ export class DispatchController {
       data: {
         signal100Enabled: value,
       },
+    });
+
+    await createAuditLogEntry({
+      action: {
+        type: AuditLogActionType.Signal100Toggled,
+        new: { enabled: value, user: { id: sessionUserId } },
+      },
+      executorId: sessionUserId,
+      prisma,
     });
 
     if (callId) {
@@ -229,7 +222,6 @@ export class DispatchController {
   @Post("/dispatchers-state")
   @Description("Set a dispatcher active or inactive")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async setActiveDispatchersState(
@@ -282,7 +274,6 @@ export class DispatchController {
   @Put("/active-dispatcher")
   @Description("Update the user's active dispatcher")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async updateActiveDispatcher(
@@ -316,7 +307,6 @@ export class DispatchController {
   @Put("/radio-channel/:unitId")
   @IsFeatureEnabled({ feature: Feature.RADIO_CHANNEL_MANAGEMENT })
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch],
   })
   async updateRadioChannel(
@@ -361,9 +351,43 @@ export class DispatchController {
     return updated;
   }
 
+  @Post("/player")
+  async checkPlayer(@BodyParams() body: unknown, @Context() ctx: Context) {
+    const schema = z.object({ discordId: z.string().optional(), steamId: z.string().optional() });
+    const data = validateSchema(schema, body);
+
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ steamId: data.steamId }, { discordId: data.discordId }] },
+      select: {
+        username: true,
+        id: true,
+        permissions: true,
+        rank: true,
+        steamId: true,
+        roles: true,
+        discordId: true,
+      },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    const [officer, deputy] = await Promise.all([
+      getActiveOfficer({ user, ctx }).catch(() => null),
+      getActiveDeputy({ user, ctx }).catch(() => null),
+    ]);
+
+    const unit = officer ?? deputy ?? null;
+
+    // todo: replace from /players/:steamId
+    // idea: in-game, if no user is found, prompt them to login via Discord or Steam and all that
+
+    return { ...user, unit };
+  }
+
   @Post("/players")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch, Permissions.LiveMap],
   })
   async getCADUsersByDiscordOrSteamId(@BodyParams() body: unknown, @Context() ctx: Context) {
@@ -371,45 +395,42 @@ export class DispatchController {
       z.object({ discordId: z.string().optional(), steamId: z.string().optional() }),
     );
     const ids = validateSchema(schema, body);
-    const users = [];
 
-    for (const { steamId, discordId } of ids) {
-      const user = await prisma.user.findFirst({
-        where: { OR: [{ steamId }, { discordId }] },
-        select: {
-          username: true,
-          id: true,
-          isEmsFd: true,
-          isLeo: true,
-          isDispatch: true,
-          permissions: true,
-          rank: true,
-          steamId: true,
-          roles: true,
-          discordId: true,
-        },
-      });
+    const users = await Promise.all(
+      ids.map(async (id) => {
+        const user = await prisma.user.findFirst({
+          where: { OR: [{ steamId: id.steamId }, { discordId: id.discordId }] },
+          select: {
+            username: true,
+            id: true,
+            permissions: true,
+            rank: true,
+            steamId: true,
+            roles: true,
+            discordId: true,
+          },
+        });
 
-      if (!user) {
-        continue;
-      }
+        if (!user) {
+          return null;
+        }
 
-      const [officer, deputy] = await Promise.all([
-        getActiveOfficer({ user, ctx }).catch(() => null),
-        getActiveDeputy({ user, ctx }).catch(() => null),
-      ]);
+        const [officer, deputy] = await Promise.all([
+          getActiveOfficer({ user, ctx }).catch(() => null),
+          getActiveDeputy({ user, ctx }).catch(() => null),
+        ]);
 
-      const unit = officer ?? deputy ?? null;
+        const unit = officer ?? deputy ?? null;
 
-      users.push({ ...user, unit });
-    }
+        return { ...user, unit };
+      }),
+    );
 
-    return users;
+    return users.filter((v) => v !== null);
   }
 
   @Get("/players/:steamId")
   @UsePermissions({
-    fallback: (u) => u.isDispatch,
     permissions: [Permissions.Dispatch, Permissions.LiveMap],
   })
   async findUserBySteamId(@PathParams("steamId") steamId: string, @Context() ctx: Context) {
@@ -418,9 +439,6 @@ export class DispatchController {
       select: {
         username: true,
         id: true,
-        isEmsFd: true,
-        isLeo: true,
-        isDispatch: true,
         permissions: true,
         rank: true,
         steamId: true,
@@ -445,7 +463,6 @@ export class DispatchController {
   @IsFeatureEnabled({ feature: Feature.TONES })
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
   })
   async getTones(): Promise<APITypes.GETDispatchTonesData> {
     const activeTones = await prisma.activeTone.findMany({
@@ -458,7 +475,6 @@ export class DispatchController {
   @IsFeatureEnabled({ feature: Feature.TONES })
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
   })
   async handleTones(
     @BodyParams() body: unknown,
@@ -511,7 +527,6 @@ export class DispatchController {
   @IsFeatureEnabled({ feature: Feature.TONES })
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
   })
   async deleteToneById(@PathParams("id") id: string): Promise<APITypes.DeleteDispatchTonesData> {
     await prisma.activeTone.delete({

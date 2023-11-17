@@ -5,7 +5,7 @@ import { WhitelistStatus } from "@snailycad/types";
 
 export async function getSessionUser(req?: IncomingMessage): Promise<GetUserData | null> {
   try {
-    const response = await handleRequest<GetUserData | null>("/user", {
+    const response = await handleRequest<GetUserData>("/user", {
       req,
       method: "POST",
     });
@@ -21,6 +21,10 @@ export async function getSessionUser(req?: IncomingMessage): Promise<GetUserData
 
     return null;
   } catch (e) {
+    if (process.env.NODE_ENV === "development") {
+      console.error({ fetchError: e });
+    }
+
     return null;
   }
 }

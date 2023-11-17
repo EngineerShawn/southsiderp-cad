@@ -1,48 +1,54 @@
 import { SELECT_OFFICER_SCHEMA } from "@snailycad/schemas";
-import { Loader, Button, AsyncListSearchField, Item } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
+import { Loader, Button, AsyncListSearchField, Item, TextField } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import { useLeoState } from "state/leo-state";
 import { useValues } from "context/ValuesContext";
-import { EmergencyVehicleValue, Officer, ShouldDoType } from "@snailycad/types";
+import {
+  type EmergencyVehicleValue,
+  type Officer,
+  ShouldDoType,
+  WhatPages,
+  ValueType,
+} from "@snailycad/types";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
-import { isUnitDisabled, makeUnitName } from "lib/utils";
-import type { PutDispatchStatusByUnitId } from "@snailycad/types/api";
-import { shallow } from "zustand/shallow";
+import { makeUnitName } from "lib/utils";
+import type { GetMyOfficersData, PutDispatchStatusByUnitId } from "@snailycad/types/api";
 import { useDispatchState } from "state/dispatch/dispatch-state";
-import { useUserOfficers } from "hooks/leo/use-get-user-officers";
+import { Permissions, usePermission } from "hooks/usePermission";
+import { ValueSelectField } from "components/form/inputs/value-select-field";
+import { handleWhatPagesFilter } from "components/shared/utility-panel/statuses-area";
 
 export function SelectOfficerModal() {
   const setActiveOfficer = useLeoState((state) => state.setActiveOfficer);
-  const { userOfficers, isLoading } = useUserOfficers();
 
-  const { activeOfficers, setActiveOfficers } = useDispatchState(
-    (state) => ({
-      activeOfficers: state.activeOfficers,
-      setActiveOfficers: state.setActiveOfficers,
-    }),
-    shallow,
-  );
+  const { activeOfficers, setActiveOfficers } = useDispatchState((state) => ({
+    activeOfficers: state.activeOfficers,
+    setActiveOfficers: state.setActiveOfficers,
+  }));
 
-  const { isOpen, closeModal, getPayload } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const error = useTranslations("Errors");
   const t = useTranslations("Leo");
   const { generateCallsign } = useGenerateCallsign();
 
-  const payload = getPayload<{ includeStatuses: boolean }>(ModalIds.SelectOfficer);
+  const payload = modalState.getPayload<{ includeStatuses: boolean }>(ModalIds.SelectOfficer);
   const includeStatuses = payload?.includeStatuses ?? false;
 
   const { codes10 } = useValues();
-  const onDutyCode = codes10.values.find((v) => v.shouldDo === ShouldDoType.SET_ON_DUTY);
+  const onDutyCode = codes10.values.find(
+    (v) => v.shouldDo === ShouldDoType.SET_ON_DUTY && handleWhatPagesFilter(v, WhatPages.LEO),
+  );
   const { state, execute } = useFetch();
+
+  const { hasPermissions } = usePermission();
+  const canSetUserDefinedCallsign = hasPermissions([Permissions.SetUserDefinedCallsignOnOfficer]);
 
   async function onSubmit(
     values: typeof INITIAL_VALUES,
@@ -50,19 +56,19 @@ export function SelectOfficerModal() {
   ) {
     if (!onDutyCode) return;
 
-    const officerId = values.officer?.id;
     const { json } = await execute<PutDispatchStatusByUnitId, typeof INITIAL_VALUES>({
-      path: `/dispatch/status/${officerId}`,
+      path: `/dispatch/status/${values.officerId}`,
       method: "PUT",
       data: {
         status: includeStatuses ? values.status : onDutyCode.id,
         vehicleId: values.vehicleId,
+        userDefinedCallsign: canSetUserDefinedCallsign ? values.userDefinedCallsign : undefined,
       },
       helpers,
     });
 
     if (json.id) {
-      closeModal(ModalIds.SelectOfficer);
+      modalState.closeModal(ModalIds.SelectOfficer);
       setActiveOfficer(json as Officer);
 
       const isUnitInActiveUnits = activeOfficers.some((o) => o.id === json.id);
@@ -77,102 +83,132 @@ export function SelectOfficerModal() {
   const INITIAL_VALUES = {
     officerId: "",
     officer: null as Officer | null,
+    officerSearch: "",
     status: null,
     vehicleId: null as string | null,
     vehicleSearch: "",
+    userDefinedCallsign: canSetUserDefinedCallsign ? "" : undefined,
   };
 
   return (
     <Modal
       title={t("selectOfficer")}
-      onClose={() => closeModal(ModalIds.SelectOfficer)}
-      isOpen={isOpen(ModalIds.SelectOfficer)}
+      onClose={() => modalState.closeModal(ModalIds.SelectOfficer)}
+      isOpen={modalState.isOpen(ModalIds.SelectOfficer)}
       className="w-[600px]"
     >
       <Formik validate={validate} initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ handleChange, setValues, errors, values, isValid }) => (
-          <Form>
-            {includeStatuses ? (
-              <p className="my-3 text-neutral-700 dark:text-gray-400">{error("noActiveOfficer")}</p>
-            ) : null}
+        {({ setValues, setFieldValue, errors, values, isValid }) => {
+          return (
+            <Form>
+              {includeStatuses ? (
+                <p className="my-3 text-neutral-700 dark:text-gray-400">
+                  {error("noActiveOfficer")}
+                </p>
+              ) : null}
 
-            <FormField errorMessage={errors.officer} label={t("officer")}>
-              <Select
-                isLoading={isLoading}
-                value={
-                  values.officer
-                    ? `${generateCallsign(values.officer)} ${makeUnitName(values.officer)}`
-                    : null
-                }
-                name="officer"
-                onChange={handleChange}
+              <AsyncListSearchField<GetMyOfficersData["officers"][number]>
+                allowsCustomValue
+                errorMessage={errors.officerId}
+                label={t("officer")}
+                localValue={values.officerSearch}
+                onInputChange={(value) => setFieldValue("officerSearch", value)}
+                onSelectionChange={(node) => {
+                  if (node) {
+                    setValues({
+                      ...values,
+                      officerSearch: node.textValue,
+                      officerId: node.key as string,
+                      officer: node.value ?? null,
+                    });
+                  }
+                }}
+                fetchOptions={{
+                  apiPath: (query) => `/leo?query=${query}`,
+                  onResponse(json: GetMyOfficersData) {
+                    return json.officers;
+                  },
+                }}
+              >
+                {(item) => {
+                  const formattedName = `${generateCallsign(item)} ${makeUnitName(item)}`;
+
+                  return (
+                    <Item key={item.id} textValue={formattedName}>
+                      {formattedName}
+                    </Item>
+                  );
+                }}
+              </AsyncListSearchField>
+
+              <AsyncListSearchField<EmergencyVehicleValue>
                 isClearable
-                values={userOfficers.map((officer) => ({
-                  label: `${generateCallsign(officer)} ${makeUnitName(officer)}`,
-                  value: officer,
-                  isDisabled: isUnitDisabled(officer),
-                }))}
-              />
-            </FormField>
+                errorMessage={errors.vehicleId}
+                isOptional
+                label={t("patrolVehicle")}
+                localValue={values.vehicleSearch}
+                onInputChange={(value) => setFieldValue("vehicleSearch", value)}
+                onSelectionChange={(node) => {
+                  if (node) {
+                    setValues({
+                      ...values,
+                      vehicleSearch: node.value?.value.value ?? node.textValue,
+                      vehicleId: node.key as string,
+                    });
+                  }
+                }}
+                fetchOptions={{
+                  apiPath: (query) =>
+                    `/admin/values/emergency_vehicle/search?query=${query}&department=${values.officer?.departmentId}`,
+                  filterTextRequired: true,
+                }}
+              >
+                {(item) => <Item key={item.id}>{item.value.value}</Item>}
+              </AsyncListSearchField>
 
-            <AsyncListSearchField<EmergencyVehicleValue>
-              isClearable
-              errorMessage={errors.vehicleId}
-              isOptional
-              label={t("patrolVehicle")}
-              localValue={values.vehicleSearch}
-              setValues={({ localValue, node }) => {
-                const vehicleId = !node ? {} : { vehicleId: node.key as string };
-                const searchValue =
-                  typeof localValue === "undefined" ? {} : { vehicleSearch: localValue };
-
-                setValues({ ...values, ...vehicleId, ...searchValue });
-              }}
-              fetchOptions={{
-                apiPath: (query) =>
-                  `/admin/values/emergency_vehicle/search?query=${query}&department=${values.officer?.departmentId}`,
-                filterTextRequired: true,
-              }}
-            >
-              {(item) => <Item key={item.id}>{item.value.value}</Item>}
-            </AsyncListSearchField>
-
-            {includeStatuses ? (
-              <FormField label={t("status")}>
-                <Select
-                  value={values.status}
-                  name="status"
-                  onChange={handleChange}
+              {includeStatuses ? (
+                <ValueSelectField
+                  label={t("status")}
+                  fieldName="status"
+                  valueType={ValueType.CODES_10}
+                  values={codes10.values}
                   isClearable
-                  values={codes10.values
-                    .filter((v) => v.shouldDo !== "SET_OFF_DUTY" && v.type === "STATUS_CODE")
-                    .map((status) => ({
-                      label: status.value.value,
-                      value: status.id,
-                    }))}
+                  filterFn={(value) =>
+                    value.shouldDo !== "SET_OFF_DUTY" && value.type === "STATUS_CODE"
+                  }
                 />
-              </FormField>
-            ) : null}
+              ) : null}
 
-            <footer className="flex justify-end mt-5">
-              <Button
-                type="reset"
-                onPress={() => closeModal(ModalIds.SelectOfficer)}
-                variant="cancel"
-              >
-                {common("cancel")}
-              </Button>
-              <Button
-                className="flex items-center"
-                disabled={!isValid || state === "loading"}
-                type="submit"
-              >
-                {state === "loading" ? <Loader className="mr-2" /> : null}
-                {common("save")}
-              </Button>
-            </footer>
-          </Form>
-        )}
+              {canSetUserDefinedCallsign ? (
+                <TextField
+                  isOptional
+                  label={t("userDefinedCallsign")}
+                  value={values.userDefinedCallsign}
+                  onChange={(value) => setFieldValue("userDefinedCallsign", value)}
+                  description={t("userDefinedCallsignDescription")}
+                />
+              ) : null}
+
+              <footer className="flex justify-end mt-5">
+                <Button
+                  type="reset"
+                  onPress={() => modalState.closeModal(ModalIds.SelectOfficer)}
+                  variant="cancel"
+                >
+                  {common("cancel")}
+                </Button>
+                <Button
+                  className="flex items-center"
+                  disabled={!isValid || state === "loading"}
+                  type="submit"
+                >
+                  {state === "loading" ? <Loader className="mr-2" /> : null}
+                  {common("save")}
+                </Button>
+              </footer>
+            </Form>
+          );
+        }}
       </Formik>
     </Modal>
   );

@@ -3,18 +3,16 @@ import type { Unit } from "src/pages/admin/manage/units";
 import Link from "next/link";
 import { formatOfficerDepartment, makeUnitName } from "lib/utils";
 import { useTranslations } from "use-intl";
-import { Button, buttonVariants, TabsContent } from "@snailycad/ui";
+import { Button, buttonVariants, SelectField, TabsContent } from "@snailycad/ui";
 import { useGenerateCallsign } from "hooks/useGenerateCallsign";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { Permissions, usePermission } from "hooks/usePermission";
 import type { GetManageUnitsData } from "@snailycad/types/api";
 import { SearchArea } from "components/shared/search/search-area";
 import dynamic from "next/dynamic";
-import { FormField } from "components/form/FormField";
-import { Select } from "components/form/Select";
 import { useValues } from "context/ValuesContext";
 
 const ManageUnitCallsignModal = dynamic(
@@ -48,14 +46,14 @@ export function CallsignsTab({ units }: Props) {
   const t = useTranslations();
   const common = useTranslations("Common");
   const { generateCallsign } = useGenerateCallsign();
-  const { openModal } = useModal();
-  const tableState = useTableState();
-  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers], true);
+  const modalState = useModal();
+  const tableState = useTableState({ pagination: asyncTable.pagination });
+  const hasViewUsersPermissions = hasPermissions([Permissions.ViewUsers]);
   const { department } = useValues();
 
   function handleManageClick(unit: Unit) {
     unitState.setTempId(unit.id);
-    openModal(ModalIds.ManageUnitCallsign);
+    modalState.openModal(ModalIds.ManageUnitCallsign);
   }
 
   const LABELS = {
@@ -69,24 +67,24 @@ export function CallsignsTab({ units }: Props) {
         search={{ search, setSearch }}
         asyncTable={asyncTable}
         totalCount={units.totalCount}
+        className="grid grid-cols-3"
       >
-        <FormField className="w-full max-w-[15rem]" label={t("Leo.department")}>
-          <Select
-            isClearable
-            value={asyncTable.filters?.departmentId ?? null}
-            onChange={(event) =>
-              asyncTable.setFilters((prev) => ({ ...prev, departmentId: event.target.value }))
-            }
-            values={department.values.map((v) => ({
-              label: v.value.value,
-              value: v.id,
-            }))}
-          />
-        </FormField>
+        <SelectField
+          label={t("Leo.department")}
+          isClearable
+          selectedKey={asyncTable.filters?.departmentId ?? null}
+          options={department.values.map((value) => ({
+            label: value.value.value,
+            value: value.id,
+          }))}
+          onSelectionChange={(value) => {
+            asyncTable.setFilters((prev) => ({ ...prev, departmentId: value }));
+          }}
+        />
       </SearchArea>
 
       {asyncTable.noItemsAvailable ? (
-        <p>{t("Management.noUnits")}</p>
+        <p className="my-2">{t("Management.noUnits")}</p>
       ) : (
         <Table
           tableState={tableState}
@@ -99,7 +97,7 @@ export function CallsignsTab({ units }: Props) {
                 hasViewUsersPermissions && unit.user ? (
                   <Link
                     href={`/admin/manage/users/${unit.userId}`}
-                    className={`rounded-md transition-all p-1 px-1.5 ${buttonVariants.default}`}
+                    className={buttonVariants({ size: "xs" })}
                   >
                     {unit.user.username}
                   </Link>

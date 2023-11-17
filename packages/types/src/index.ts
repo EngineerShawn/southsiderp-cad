@@ -1,14 +1,15 @@
 import type { Permissions } from "@snailycad/permissions";
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "./prisma/index";
 import type * as Enums from "./enums";
+import type { CadFeatureOptions } from "./lib/cad-feature";
 
 export * from "./enums";
+export * from "./lib/cad-feature";
 
 type CADPick =
   | "id"
   | "name"
   | "areaOfPlay"
-  | "maxPlateLength"
   | "towWhitelisted"
   | "taxiWhitelisted"
   | "whitelisted"
@@ -25,12 +26,12 @@ type CADPick =
   | "discordRoles"
   | "discordRolesId"
   | "version"
-  | "autoSetUserProperties"
-  | "autoSetUserPropertiesId";
+  | "autoSetUserPropertiesId"
+  | "timeZone";
 
 export type cad = Pick<
   Omit<Prisma.cad, "registrationCode"> & {
-    features: Record<Enums.Feature, boolean>;
+    features: Record<Enums.Feature, boolean> & { options?: CadFeatureOptions };
     miscCadSettings: MiscCadSettings | null;
     apiToken?: ApiToken | null;
     autoSetUserProperties?: AutoSetUserProperties | null;
@@ -48,14 +49,18 @@ interface CADVersion {
 }
 
 export type CadFeature = Prisma.CadFeature;
+export type LiveMapURL = Prisma.LiveMapURL;
 
 export type MiscCadSettings = Prisma.MiscCadSettings & {
   webhooks?: DiscordWebhook[];
+  liveMapURLs?: Prisma.LiveMapURL[];
 };
 
 export type DiscordWebhook = Prisma.DiscordWebhook;
 
 export type AutoSetUserProperties = Prisma.AutoSetUserProperties;
+
+export type BlacklistedWord = Prisma.BlacklistedWord;
 
 export type ApiToken = Prisma.ApiToken & {
   logs?: ApiTokenLog[];
@@ -72,7 +77,6 @@ export type DiscordRoles = Prisma.DiscordRoles & {
   towRoles?: DiscordRole[];
   taxiRoles?: DiscordRole[];
   courthouseRoles?: DiscordRole[];
-  adminRole: DiscordRole | null;
   whitelistedRole: DiscordRole | null;
   roles?: DiscordRole[];
 
@@ -92,12 +96,6 @@ type UserPicks =
   | "id"
   | "username"
   | "rank"
-  | "isLeo"
-  | "isSupervisor"
-  | "isEmsFd"
-  | "isDispatch"
-  | "isTow"
-  | "isTaxi"
   | "banned"
   | "banReason"
   | "avatarUrl"
@@ -112,18 +110,20 @@ type UserPicks =
   | "soundSettingsId"
   | "soundSettings"
   | "permissions"
-  | "apiToken"
   | "apiTokenId"
   | "locale"
   | "twoFactorEnabled"
   | "hasTempPassword"
   | "roles"
   | "lastSeen"
-  | "hasPassword";
+  | "hasPassword"
+  | "developerMode"
+  | "dispatchLayoutOrder"
+  | "emsFdLayoutOrder"
+  | "officerLayoutOrder";
 
 export type User = Pick<
   Prisma.User & {
-    apiToken: Prisma.ApiToken | null;
     soundSettings: Prisma.UserSoundSettings | null;
     twoFactorEnabled?: boolean;
     hasTempPassword?: boolean;
@@ -133,8 +133,10 @@ export type User = Pick<
   UserPicks
 >;
 
-export type User2FA = Prisma.User2FA;
+export type LimitedUserPicks = "id" | "discordId" | "steamId" | "username";
+export type LimitedUser = Pick<Prisma.User, LimitedUserPicks>;
 
+export type User2FA = Prisma.User2FA;
 export type UserSoundSettings = Prisma.UserSoundSettings;
 
 export type BaseCitizen = Prisma.Citizen;
@@ -143,15 +145,27 @@ export type Citizen = Prisma.Citizen & {
   ethnicity?: Prisma.Value | null;
   driversLicense: Prisma.Value | null;
   weaponLicense: Prisma.Value | null;
+  fishingLicense: Prisma.Value | null;
+  huntingLicense: Prisma.Value | null;
   pilotLicense: Prisma.Value | null;
   waterLicense: Prisma.Value | null;
   dlCategory: (Prisma.DriversLicenseCategoryValue & { value: Value })[];
   flags?: Prisma.Value[];
   notes?: Prisma.Note[];
   suspendedLicenses?: SuspendedCitizenLicenses | null;
+  licensePoints?: CitizenLicensePoints | null;
 };
 
+export type Pet = Prisma.Pet & {
+  citizen: BaseCitizen;
+  notes?: Note[];
+  medicalRecords?: PetMedicalRecord[];
+};
+
+export type PetMedicalRecord = Prisma.PetMedicalRecord;
+
 export type SuspendedCitizenLicenses = Prisma.SuspendedCitizenLicenses;
+export type CitizenLicensePoints = Prisma.CitizenLicensePoints;
 
 export type Note = Prisma.Note & {
   createdBy?: Officer | null;
@@ -179,6 +193,11 @@ export type MedicalRecord = Prisma.MedicalRecord & {
   bloodGroup: Value | null;
 };
 
+export type DoctorVisit = Prisma.DoctorVisit & {
+  citizen: BaseCitizen;
+  user?: User | null;
+};
+
 export type Value = Prisma.Value & {
   officerRankDepartments?: DepartmentValue[];
   _count?: ValueCounts;
@@ -201,7 +220,7 @@ export type WarningApplicable = Prisma.WarningApplicable;
 export type WarningNotApplicable = Prisma.WarningNotApplicable;
 
 export type Violation = Prisma.Violation & {
-  penalCode: PenalCode;
+  penalCode: PenalCode | null;
 };
 
 export type SeizedItem = Prisma.SeizedItem;
@@ -218,7 +237,12 @@ export type DivisionValue = Prisma.DivisionValue & { value: Value };
 
 export type CallTypeValue = Prisma.CallTypeValue & { value: Value };
 
-export type DepartmentValue = Prisma.DepartmentValue & { value: Value };
+export type DepartmentValueLink = Prisma.DepartmentValueLink;
+
+export type DepartmentValue = Prisma.DepartmentValue & {
+  value: Value;
+  links?: DepartmentValueLink[];
+};
 
 export type DriversLicenseCategoryValue = Prisma.DriversLicenseCategoryValue & {
   value: Value;
@@ -226,9 +250,11 @@ export type DriversLicenseCategoryValue = Prisma.DriversLicenseCategoryValue & {
 
 export type VehicleValue = Prisma.VehicleValue & { trimLevels?: Value[]; value: Value };
 
-export type WeaponValue = Prisma.WeaponValue & { value: Value };
+export type WeaponValue = Prisma.WeaponValue & { value: Value; flags?: Value[] };
 
 export type BleeterPost = Prisma.BleeterPost;
+export type BleeterProfile = Prisma.BleeterProfile & {};
+export type BleeterProfileFollow = Prisma.BleeterProfileFollow & {};
 
 export type TowCall = Prisma.TowCall & {
   assignedUnit: Pick<Prisma.Citizen, "name" | "surname" | "id"> | null;
@@ -261,7 +287,7 @@ export type Officer = Prisma.Officer & {
   status: StatusValue | null;
   citizen: Pick<Prisma.Citizen, "name" | "surname" | "id">;
   whitelistStatus?: (Prisma.LeoWhitelistStatus & { department: Officer["department"] }) | null;
-  user?: User | null;
+  user?: LimitedUser | null;
   rank: Prisma.Value | null;
   activeIncident?: Prisma.LeoIncident | null;
   callsigns?: IndividualDivisionCallsign[];
@@ -324,6 +350,18 @@ export type ActiveDispatchers = Prisma.ActiveDispatchers & {
   department?: DepartmentValue | null;
 };
 
+export type DispatchChat = Prisma.DispatchChat & {
+  /** null = Dispatch */
+  creator: ChatCreator | null;
+  call?: Call911 | null;
+  /** active incident */
+  incident?: LeoIncident | null;
+};
+
+export interface ChatCreator {
+  unit: Officer | CombinedLeoUnit | EmsFdDeputy | CombinedEmsFdUnit;
+}
+
 export type Call911 = Prisma.Call911 & {
   position: Position | null;
   situationCode: StatusValue | null;
@@ -362,8 +400,9 @@ type _Record = Prisma.Record & {
   courtEntry?: CourtEntry | null;
   vehicle?: (Prisma.RegisteredVehicle & { model: VehicleValue }) | null;
   release?: Partial<RecordRelease> | null;
+  call911?: Pick<Call911, "caseNumber"> | null;
 };
-export { _Record as Record };
+export type { _Record as Record };
 
 export type RecordRelease = Prisma.RecordRelease & {
   releasedBy: Citizen | null;
@@ -396,7 +435,7 @@ export type EmsFdDeputy = Prisma.EmsFdDeputy & {
   rank: Officer["rank"];
   status: Officer["status"];
   citizen: Officer["citizen"];
-  user?: Officer["user"] | null;
+  user?: LimitedUser | null;
   whitelistStatus?: Officer["whitelistStatus"];
   activeVehicle: EmergencyVehicleValue | null;
 };
@@ -455,5 +494,5 @@ export type ActiveTone = Prisma.ActiveTone & {
 
 export type AuditLog = Prisma.AuditLog & {
   executor?: User | null;
-  action: { previous: any; new: any; type: any };
+  action: { previous: unknown; new: unknown; type: unknown };
 };

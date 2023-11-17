@@ -1,4 +1,4 @@
-import { Feature, Rank, User } from "@prisma/client";
+import { Feature, type User } from "@prisma/client";
 import {
   BodyParams,
   Context,
@@ -10,7 +10,7 @@ import {
 import { ContentType, Delete, Get, Post, Put } from "@tsed/schema";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { Permissions, UsePermissions } from "middlewares/use-permissions";
 import { COURTHOUSE_POST_SCHEMA } from "@snailycad/schemas";
 import { userProperties } from "lib/auth/getSessionUser";
@@ -42,7 +42,6 @@ export class CourthousePostsController {
   }
 
   @UsePermissions({
-    fallback: (user) => user.rank !== Rank.USER,
     permissions: [Permissions.ManageCourthousePosts],
   })
   @Post("/")
@@ -65,7 +64,6 @@ export class CourthousePostsController {
   }
 
   @UsePermissions({
-    fallback: (user) => user.rank !== Rank.USER,
     permissions: [Permissions.ManageCourthousePosts],
   })
   @Put("/:id")
@@ -96,7 +94,6 @@ export class CourthousePostsController {
   }
 
   @UsePermissions({
-    fallback: (user) => user.rank !== Rank.USER,
     permissions: [Permissions.ManageCourthousePosts],
   })
   @Delete("/:id")

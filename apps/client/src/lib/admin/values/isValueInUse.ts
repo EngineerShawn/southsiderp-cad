@@ -19,6 +19,8 @@ const USED_COUNT_NAMES_PER_TYPE: Partial<Record<ValueType, string[]>> = {
     "driversLicenseToValue",
     "weaponExamToLicense",
     "dlExamToLicense",
+    "huntingLicenseToValue",
+    "fishingLicenseToValue",
   ],
   OFFICER_RANK: ["officerRankDepartments"],
   QUALIFICATION: ["UnitQualification"],
@@ -27,6 +29,7 @@ const USED_COUNT_NAMES_PER_TYPE: Partial<Record<ValueType, string[]>> = {
 
   VEHICLE_FLAG: ["vehicleFlags"],
   ADDRESS_FLAG: ["addressFlags"],
+  WEAPON_FLAG: ["weaponFlags"],
 };
 
 export function isValueInUse(value: AnyValue) {

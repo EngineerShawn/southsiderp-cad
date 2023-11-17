@@ -4,8 +4,8 @@ import { BadRequest } from "@tsed/exceptions";
 import { Controller } from "@tsed/di";
 import { URL } from "node:url";
 import { prisma } from "lib/data/prisma";
-import { Rank, User, WhitelistStatus } from "@prisma/client";
-import { IsAuth } from "middlewares/is-auth";
+import { Rank, type User, WhitelistStatus } from "@prisma/client";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { ContentType, Description } from "@tsed/schema";
 import { request } from "undici";
 import { findRedirectURL } from "./discord-auth-controller";
@@ -16,12 +16,12 @@ import { getAPIUrl } from "@snailycad/utils/api-url";
 import { Feature, IsFeatureEnabled } from "middlewares/is-enabled";
 
 const callbackUrl = makeCallbackURL(getAPIUrl());
-const STEAM_API_KEY = process.env["STEAM_API_KEY"];
+const STEAM_API_KEY = process.env.STEAM_API_KEY;
 export const STEAM_API_URL = "https://api.steampowered.com";
 
 @Controller("/auth/steam")
 @ContentType("application/json")
-@IsFeatureEnabled({ feature: [Feature.STEAM_OAUTH, Feature.FORCE_STEAM_AUTH] })
+@IsFeatureEnabled({ feature: [Feature.STEAM_OAUTH] })
 export class SteamOAuthController {
   @Get("/")
   @Description("Redirect to Steam's OAuth2 URL")
@@ -59,7 +59,7 @@ export class SteamOAuthController {
     ]);
 
     if (!steamData) {
-      return res.redirect(`${redirectURL}/auth/login?error=could not fetch discord data`);
+      return res.redirect(`${redirectURL}/auth/login?error=steamAuthIssue`);
     }
 
     const steamId = steamData.steamid;
@@ -191,14 +191,14 @@ async function getSteamData(steamId: string): Promise<SteamData | null> {
       headers: { accept: "application/json" },
     },
   )
-    .then((v) => v.body.json())
+    .then((v) => v.body.json() as any)
     .catch(() => null);
 
   if (!data) {
     return null;
   }
 
-  return data?.response?.players[0];
+  return data.response.players[0];
 }
 
 function makeCallbackURL(base: string) {

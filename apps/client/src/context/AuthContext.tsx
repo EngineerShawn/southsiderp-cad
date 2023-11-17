@@ -1,13 +1,13 @@
 import * as React from "react";
 import { useRouter } from "next/router";
-import { type cad as CAD, type User, WhitelistStatus } from "@snailycad/types";
+import { type cad as CAD, type User, WhitelistStatus, Rank, type ApiToken } from "@snailycad/types";
 import { useIsRouteFeatureEnabled } from "../hooks/auth/useIsRouteFeatureEnabled";
-import { useListener } from "@casper124578/use-socket.io";
+import { useListener } from "@casperiv/use-socket.io";
 import { SocketEvents } from "@snailycad/config";
 
 interface Context {
-  user: User | null;
-  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  user: (User & { apiToken?: ApiToken | null }) | null;
+  setUser: React.Dispatch<React.SetStateAction<(User & { apiToken?: ApiToken | null }) | null>>;
 
   cad: CAD | null;
   setCad: React.Dispatch<React.SetStateAction<CAD | null>>;
@@ -53,6 +53,7 @@ export function AuthProvider({ initialData, children }: ProviderProps) {
     const user = await getSessionUser();
 
     if (
+      user?.rank !== Rank.OWNER &&
       user?.whitelistStatus === WhitelistStatus.PENDING &&
       !NO_LOADING_ROUTES.includes(router.pathname)
     ) {
@@ -68,7 +69,7 @@ export function AuthProvider({ initialData, children }: ProviderProps) {
     }
 
     const isForceAccountPassword =
-      (cad?.features.FORCE_ACCOUNT_PASSWORD ?? false) && !user?.hasPassword;
+      (cad?.features?.FORCE_ACCOUNT_PASSWORD ?? false) && !user?.hasPassword;
     if (user && !NO_LOADING_ROUTES.includes(router.pathname) && isForceAccountPassword) {
       const from = router.asPath;
       router.push(`/auth/account-password?from=${from}`);

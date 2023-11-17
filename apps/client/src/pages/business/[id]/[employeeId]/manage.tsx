@@ -5,7 +5,7 @@ import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 
-import { FullBusiness, FullEmployee, useBusinessState } from "state/business-state";
+import { type FullBusiness, type FullEmployee, useBusinessState } from "state/business-state";
 import { useTranslations } from "use-intl";
 import { EmployeeAsEnum } from "@snailycad/types";
 import dynamic from "next/dynamic";
@@ -13,7 +13,7 @@ import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
 import { EmployeesTab } from "components/business/manage/tabs/employees-tab/employees-tab";
 import { TabList, BreadcrumbItem, Breadcrumbs } from "@snailycad/ui";
-import { shallow } from "zustand/shallow";
+import type { GetBusinessByIdData } from "@snailycad/types/api";
 
 interface Props {
   employee: FullEmployee | null;
@@ -44,14 +44,11 @@ export default function BusinessId(props: Props) {
     setCurrentEmployee: state.setCurrentEmployee,
   }));
 
-  const { currentBusiness, currentEmployee } = useBusinessState(
-    (state) => ({
-      currentBusiness: state.currentBusiness,
-      currentEmployee: state.currentEmployee,
-      posts: state.posts,
-    }),
-    shallow,
-  );
+  const { currentBusiness, currentEmployee } = useBusinessState((state) => ({
+    currentBusiness: state.currentBusiness,
+    currentEmployee: state.currentEmployee,
+    posts: state.posts,
+  }));
 
   const common = useTranslations("Common");
   const t = useTranslations("Business");
@@ -66,7 +63,11 @@ export default function BusinessId(props: Props) {
     return null;
   }
 
-  if (!currentEmployee.role || currentEmployee.role?.as === "EMPLOYEE") {
+  const isBusinessOwner = currentEmployee.role?.as === EmployeeAsEnum.OWNER;
+  const hasManagePermissions =
+    isBusinessOwner || currentEmployee.canManageEmployees || currentEmployee.canManageVehicles;
+
+  if (!hasManagePermissions) {
     return (
       <Layout className="dark:text-white">
         <p>{common("insufficientPermissions")}</p>
@@ -74,18 +75,25 @@ export default function BusinessId(props: Props) {
     );
   }
 
-  const isBusinessOwner = currentEmployee.role.as === EmployeeAsEnum.OWNER;
-
   const tabsObj = [
-    { enabled: true, name: t("allEmployees"), value: "allEmployees" },
-    { enabled: true, name: t("businessVehicles"), value: "businessVehicles" },
+    {
+      enabled: currentEmployee.canManageEmployees || isBusinessOwner,
+      name: t("allEmployees"),
+      value: "allEmployees",
+    },
+    {
+      enabled: currentEmployee.canManageVehicles || isBusinessOwner,
+      name: t("businessVehicles"),
+      value: "businessVehicles",
+    },
     {
       enabled: isBusinessOwner,
       name: t("business"),
       value: "business",
     },
     {
-      enabled: currentBusiness.whitelisted,
+      enabled:
+        currentBusiness.whitelisted && (currentEmployee.canManageEmployees || isBusinessOwner),
       name: t("pendingEmployees"),
       value: "pendingEmployees",
     },
@@ -106,7 +114,7 @@ export default function BusinessId(props: Props) {
 
       <Breadcrumbs>
         <BreadcrumbItem href="/business">{t("business")}</BreadcrumbItem>
-        <BreadcrumbItem href={`/citizen/${currentBusiness.id}`}>
+        <BreadcrumbItem href={`/business/${currentBusiness.id}/${currentEmployee.id}`}>
           {currentBusiness.name}
         </BreadcrumbItem>
         <BreadcrumbItem>{common("manage")}</BreadcrumbItem>
@@ -127,15 +135,20 @@ export default function BusinessId(props: Props) {
 
 export const getServerSideProps: GetServerSideProps = async ({ query, locale, req }) => {
   const user = await getSessionUser(req);
-  const [business, values] = await requestAll(req, [
+  const [business, values] = (await requestAll(req, [
     [`/businesses/business/${query.id}?employeeId=${query.employeeId}`, null],
     ["/admin/values/business_role?paths=license", []],
-  ]);
+  ])) as [GetBusinessByIdData | null, any[]];
 
-  const notFound = !business?.employee || business.employee.citizenId !== business.citizenId;
+  const isCurrentEmployeeOwner = business?.employees.some((v) => {
+    const hasManagePermissions =
+      v.role?.as === "OWNER" || v.canManageEmployees || v.canManageVehicles;
+
+    return hasManagePermissions && v.citizenId === business.employee?.citizenId;
+  });
 
   return {
-    notFound,
+    notFound: !isCurrentEmployeeOwner,
     props: {
       business,
       values,

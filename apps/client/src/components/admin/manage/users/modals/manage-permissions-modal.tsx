@@ -2,13 +2,11 @@ import * as React from "react";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
-import { getPermissions, PermissionNames, Permissions } from "@snailycad/permissions";
-import { FormField } from "components/form/FormField";
-import { Toggle } from "components/form/Toggle";
+import { ModalIds } from "types/modal-ids";
+import { getPermissions, type PermissionNames, Permissions } from "@snailycad/permissions";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
-import { Loader, Button, TextField } from "@snailycad/ui";
+import { Loader, Button, TextField, SwitchField } from "@snailycad/ui";
 import type { GetManageUserByIdData, PutManageUserPermissionsByIdData } from "@snailycad/types/api";
 import { usePermissionsModal } from "hooks/use-permissions-modal";
 
@@ -23,7 +21,8 @@ export function ManagePermissionsModal({ user, onUpdate, isReadOnly }: Props) {
 
   const t = useTranslations("Management");
   const common = useTranslations("Common");
-  const { closeModal, isOpen } = useModal();
+  const tPermission = useTranslations("Permissions");
+  const modalState = useModal();
   const userPermissions = getPermissions(user);
   const { state, execute } = useFetch();
   const { DEPRECATED_PERMISSIONS, groups, handleToggleAll } = usePermissionsModal({ isReadOnly });
@@ -38,7 +37,7 @@ export function ManagePermissionsModal({ user, onUpdate, isReadOnly }: Props) {
     });
 
     if (json.id) {
-      closeModal(ModalIds.ManagePermissions);
+      modalState.closeModal(ModalIds.ManagePermissions);
       onUpdate?.(json);
     }
   }
@@ -51,11 +50,11 @@ export function ManagePermissionsModal({ user, onUpdate, isReadOnly }: Props) {
     <Modal
       className="w-[1200px]"
       title={t("managePermissions")}
-      onClose={() => closeModal(ModalIds.ManagePermissions)}
-      isOpen={isOpen(ModalIds.ManagePermissions)}
+      onClose={() => modalState.closeModal(ModalIds.ManagePermissions)}
+      isOpen={modalState.isOpen(ModalIds.ManagePermissions)}
     >
       <Formik onSubmit={onSubmit} initialValues={INITIAL_VALUES}>
-        {({ handleChange, setValues, values }) => (
+        {({ setFieldValue, setValues, values }) => (
           <Form>
             <TextField
               label={common("search")}
@@ -94,7 +93,7 @@ export function ManagePermissionsModal({ user, onUpdate, isReadOnly }: Props) {
 
                     <div className="grid grid-cols-1 md:grid-cols-3">
                       {filtered.map((permission) => {
-                        const formattedName = formatPermissionName(permission);
+                        const formattedName = tPermission(permission);
                         const isDisabled = user.roles?.some((r) =>
                           r.permissions.includes(permission),
                         );
@@ -104,14 +103,15 @@ export function ManagePermissionsModal({ user, onUpdate, isReadOnly }: Props) {
                         }
 
                         return (
-                          <FormField key={permission} className="my-1" label={formattedName}>
-                            <Toggle
-                              onCheckedChange={handleChange}
-                              value={values[permission as PermissionNames]}
-                              name={permission}
-                              disabled={isReadOnly || isDisabled}
-                            />
-                          </FormField>
+                          <SwitchField
+                            key={permission}
+                            isSelected={values[permission as PermissionNames]}
+                            onChange={(isSelected) => setFieldValue(permission, isSelected)}
+                            isDisabled={isReadOnly || isDisabled}
+                            isReadOnly={isReadOnly}
+                          >
+                            {formattedName}
+                          </SwitchField>
                         );
                       })}
                     </div>
@@ -142,12 +142,4 @@ function makePermissionsData(data: Record<PermissionNames, boolean>) {
   );
 
   return Object.fromEntries(newPermissions);
-}
-
-export function formatPermissionName(permission: string) {
-  // todo: whoops
-  if (permission === Permissions.ManageDMV) return "Manage DMV";
-  if (permission === Permissions.ManageCADSettings) return "Manage CAD-Settings";
-
-  return permission.match(/[A-Z][a-z]+/g)?.join(" ") ?? permission;
 }

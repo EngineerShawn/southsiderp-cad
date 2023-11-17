@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import type { PenalCode } from "@snailycad/types";
 import { TableItemForm } from "./table-item-form";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
+import { type createInitialRecordValues } from "./manage-record-modal";
 
 interface Props {
   penalCodes: PenalCode[];
@@ -12,7 +13,7 @@ interface Props {
 }
 
 export function PenalCodesTable({ isReadOnly, penalCodes, isWithinCardOrModal = true }: Props) {
-  const { values } = useFormikContext<{ violations: any[] }>();
+  const { values } = useFormikContext<ReturnType<typeof createInitialRecordValues>>();
   const t = useTranslations("Leo");
   const common = useTranslations("Common");
   const currency = common("currency");
@@ -23,10 +24,12 @@ export function PenalCodesTable({ isReadOnly, penalCodes, isWithinCardOrModal = 
     let sum = 0;
 
     for (const violation of values.violations) {
-      const counts = parseInt(violation.value.counts?.value) || 1;
+      // skip deleted penal code
+      if (!violation.value.id) continue;
+      const counts = parseInt(String(violation.value.counts.value)) || 1;
 
-      if (violation.value[type]?.value) {
-        sum += parseInt(violation.value[type]?.value) * counts;
+      if (violation.value[type].value) {
+        sum += parseInt(String(violation.value[type].value)) * counts;
       }
     }
 
@@ -52,7 +55,7 @@ export function PenalCodesTable({ isReadOnly, penalCodes, isWithinCardOrModal = 
         tableState={tableState}
         data={penalCodes.map((penalCode) => ({
           id: penalCode.id,
-          title: penalCode.title,
+          title: penalCode.title || t("deletedPenalCode"),
           data: <TableItemForm isReadOnly={isReadOnly} penalCode={penalCode} />,
         }))}
         columns={[

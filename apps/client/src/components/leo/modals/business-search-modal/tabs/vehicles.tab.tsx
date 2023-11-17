@@ -1,25 +1,24 @@
 import type { RegisteredVehicle } from "@snailycad/types";
-import { Button, TabsContent } from "@snailycad/ui";
-import { FullDate } from "components/shared/FullDate";
+import { Button, FullDate, TabsContent } from "@snailycad/ui";
 import { Table, useTableState } from "components/shared/Table";
 import { useModal } from "state/modalState";
 import { useBusinessSearch } from "state/search/business-search-state";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 
 export function BusinessSearchVehiclesTab() {
   const t = useTranslations();
   const { currentResult } = useBusinessSearch();
   const tableState = useTableState();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
 
   if (!currentResult) {
     return null;
   }
 
   function handleOpenInVehicleSearch(vehicle: RegisteredVehicle) {
-    closeModal(ModalIds.BusinessSearch);
-    openModal(ModalIds.VehicleSearch, vehicle);
+    modalState.closeModal(ModalIds.BusinessSearch);
+    modalState.openModal(ModalIds.VehicleSearch, vehicle);
   }
 
   return (

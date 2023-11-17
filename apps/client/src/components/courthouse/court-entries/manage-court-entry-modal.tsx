@@ -4,11 +4,11 @@ import { Loader, Button, TextField } from "@snailycad/ui";
 import { FormField } from "components/form/FormField";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { Form, Formik, FormikHelpers } from "formik";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { handleValidate } from "lib/handleValidate";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { DEFAULT_EDITOR_DATA, Editor } from "components/editor/editor";
 import { CourtEntryDates } from "./court-entry-dates";
 import type { PostCourtEntriesData, PutCourtEntriesData } from "@snailycad/types/api";
@@ -29,7 +29,7 @@ export function ManageCourtEntry({
   onCreate,
   onUpdate,
 }: Props) {
-  const { closeModal, isOpen } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const { state, execute } = useFetch();
   const t = useTranslations("Courthouse");
@@ -44,7 +44,7 @@ export function ManageCourtEntry({
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.ManageCourtEntry);
+    modalState.closeModal(ModalIds.ManageCourtEntry);
   }
 
   async function onSubmit(
@@ -65,7 +65,7 @@ export function ManageCourtEntry({
 
       if (json.id) {
         onUpdate?.(json);
-        closeModal(ModalIds.ManageCourtEntry);
+        modalState.closeModal(ModalIds.ManageCourtEntry);
       }
     } else {
       const { json } = await execute<PostCourtEntriesData, typeof INITIAL_VALUES>({
@@ -77,7 +77,7 @@ export function ManageCourtEntry({
 
       if (json.id) {
         onCreate?.(json);
-        closeModal(ModalIds.ManageCourtEntry);
+        modalState.closeModal(ModalIds.ManageCourtEntry);
       }
     }
   }
@@ -85,7 +85,7 @@ export function ManageCourtEntry({
   return (
     <Modal
       onClose={handleClose}
-      isOpen={isOpen(ModalIds.ManageCourtEntry)}
+      isOpen={modalState.isOpen(ModalIds.ManageCourtEntry)}
       title={t("manageCourtEntry")}
       className="w-[750px]"
     >

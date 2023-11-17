@@ -1,15 +1,18 @@
 import type { SelectValue } from "../../fields/select-field";
 import type { MultiSelectState } from "../../../hooks/select/useMultiSelectState";
 import { ChevronDown, X } from "react-bootstrap-icons";
-import { Button } from "../../button";
-import { classNames } from "../../../utils/classNames";
+import { Button } from "../../button/button";
+import { cn } from "mxcn";
 import type { ReactNode } from "react";
+import { Loader } from "../../loader";
 
 interface Props<T extends SelectValue> {
   state: MultiSelectState<T>;
   selectionMode: "single" | "multiple";
   errorMessage?: string | ReactNode;
-  isClearable: boolean | undefined;
+  isClearable?: boolean;
+  isDisabled?: boolean;
+  isLoading?: boolean;
 }
 
 export function SelectActions<T extends SelectValue>(props: Props<T>) {
@@ -20,13 +23,25 @@ export function SelectActions<T extends SelectValue>(props: Props<T>) {
 
   return (
     <>
+      {props.isLoading ? (
+        <div
+          className={cn(
+            "absolute top-0 bottom-0 flex items-center justify-center",
+            showClearableButton ? "right-[82px]" : "right-12",
+          )}
+        >
+          <Loader />
+        </div>
+      ) : null}
+
       {showClearableButton ? (
         <Button
+          isDisabled={props.isDisabled}
           onPress={() => {
             props.state.setSelectedKeys([]);
           }}
-          className={classNames(
-            "px-2 !rounded-none -mx-[1px]",
+          className={cn(
+            "px-2 !rounded-none -mx-[1.5px]",
             "group-hover:dark:!border-gray-500 group-hover:!border-gray-500",
             props.state.isOpen && "!border-gray-800 dark:!border-gray-500",
             props.errorMessage &&
@@ -34,23 +49,24 @@ export function SelectActions<T extends SelectValue>(props: Props<T>) {
           )}
           type="button"
         >
-          <X className="w-5 h-5 fill-white" />
+          <X className="w-5 h-5 dark:fill-white" />
         </Button>
       ) : null}
 
       <Button
+        isDisabled={props.isDisabled}
         onPress={() => props.state.open()}
         size="xs"
         type="button"
-        className={classNames(
-          "rounded-l-none border-gray-200 dark:border-quinary",
+        className={cn(
+          "rounded-l-none",
+          !showClearableButton && "-ml-[1.5px]",
           "group-hover:dark:!border-gray-500 group-hover:!border-gray-500",
-          showClearableButton ? "-ml-[1px]" : "-ml-[1.5px]",
           props.state.isOpen && "!border-gray-800 dark:!border-gray-500",
           props.errorMessage && "!border-red-500 focus:!border-red-700 dark:!focus:border-red-700",
         )}
       >
-        <ChevronDown />
+        <ChevronDown className="w-5 h-5 dark:fill-white" />
       </Button>
     </>
   );

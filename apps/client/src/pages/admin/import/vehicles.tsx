@@ -6,12 +6,11 @@ import type { GetServerSideProps } from "next";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
-import { Rank, RegisteredVehicle } from "@snailycad/types";
+import type { RegisteredVehicle } from "@snailycad/types";
 import { Table, useTableState } from "components/shared/Table";
-import { FullDate } from "components/shared/FullDate";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate } from "@snailycad/ui";
 import { ImportModal } from "components/admin/import/ImportModal";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { useAsyncTable } from "hooks/shared/table/use-async-table";
 import type { GetImportVehiclesData, PostImportVehiclesData } from "@snailycad/types/api";
@@ -31,10 +30,10 @@ export default function ImportVehiclesPage({ data }: Props) {
   const t = useTranslations("Management");
   const common = useTranslations("Common");
   const veh = useTranslations("Vehicles");
-  const { closeModal, openModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
   const { hasPermissions } = usePermission();
-  const hasDeletePermissions = hasPermissions([Permissions.DeleteRegisteredVehicles], true);
+  const hasDeletePermissions = hasPermissions([Permissions.DeleteRegisteredVehicles]);
 
   const asyncTable = useAsyncTable({
     search,
@@ -55,7 +54,7 @@ export default function ImportVehiclesPage({ data }: Props) {
 
   function handleDeleteClick(vehicle: RegisteredVehicle) {
     vehicleState.setTempId(vehicle.id);
-    openModal(ModalIds.AlertDeleteVehicle);
+    modalState.openModal(ModalIds.AlertDeleteVehicle);
   }
 
   async function handleDeleteVehicle() {
@@ -69,14 +68,13 @@ export default function ImportVehiclesPage({ data }: Props) {
     if (typeof json === "boolean" && json) {
       asyncTable.remove(tempVehicle.id);
       vehicleState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteWeapon);
+      modalState.closeModal(ModalIds.AlertDeleteWeapon);
     }
   }
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ImportRegisteredVehicles],
       }}
     >
@@ -85,7 +83,9 @@ export default function ImportVehiclesPage({ data }: Props) {
           <Title className="!mb-0">{t("IMPORT_VEHICLES")}</Title>
 
           <div>
-            <Button onPress={() => openModal(ModalIds.ImportVehicles)}>{t("importViaFile")}</Button>
+            <Button onPress={() => modalState.openModal(ModalIds.ImportVehicles)}>
+              {t("importViaFile")}
+            </Button>
           </div>
         </div>
 

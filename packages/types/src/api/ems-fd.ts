@@ -1,4 +1,4 @@
-import type * as Prisma from "@prisma/client";
+import type * as Prisma from "../prisma/index";
 import type * as Types from "../index.js";
 
 /**
@@ -78,3 +78,18 @@ export type GetEmsFdActiveDeputy = Types.EmsFdDeputy;
  * @route /ems-fd/active-deputies
  */
 export type GetEmsFdActiveDeputies = (Types.EmsFdDeputy | Types.CombinedEmsFdUnit)[];
+
+/**
+ * @method GET
+ * @route /ems-fd/dead-citizens
+ */
+export interface GetDeadCitizensData {
+  citizens: Types.Citizen[];
+  totalCount: number;
+}
+
+/**
+ * @method POST
+ * @route /ems-fd/doctor-visit
+ */
+export type PostEmsFdDoctorVisit = Types.DoctorVisit;

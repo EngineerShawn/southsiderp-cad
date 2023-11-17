@@ -1,4 +1,12 @@
-import { AsyncListSearchField, Item, TextField, TabsContent } from "@snailycad/ui";
+import { VehiclePaceType } from "@snailycad/types";
+import {
+  AsyncListSearchField,
+  Item,
+  TextField,
+  TabsContent,
+  FormRow,
+  SelectField,
+} from "@snailycad/ui";
 import { useFormikContext } from "formik";
 import type { VehicleSearchResult } from "state/search/vehicle-search-state";
 import { useTranslations } from "use-intl";
@@ -13,11 +21,19 @@ interface _FormikContext {
   vehicleId?: string | null;
   vehicleModel?: string | null;
   vehicleColor?: string | null;
+  vehiclePaceType?: VehiclePaceType | null;
+  vehicleSpeed?: string | null;
+  speedLimit?: string | null;
 }
 
 export function VehicleTab(props: VehicleTabProps) {
   const t = useTranslations();
   const { setValues, setFieldValue, errors, values } = useFormikContext<_FormikContext>();
+
+  const VEHICLE_PACE_TYPE_OPTIONS = Object.keys(VehiclePaceType).map((type) => ({
+    value: type,
+    label: t(`Leo.${type}`),
+  }));
 
   return (
     <TabsContent value="vehicle-tab">
@@ -27,20 +43,18 @@ export function VehicleTab(props: VehicleTabProps) {
         isDisabled={props.isReadOnly}
         allowsCustomValue
         autoFocus
-        setValues={({ localValue, node }) => {
-          const plateOrVinSearch =
-            typeof localValue !== "undefined" ? { plateOrVinSearch: localValue } : {};
-          const plateOrVin = node
-            ? {
-                plateOrVin: node.key as string,
-                vehicleModel: node.value.model.value.value,
-                vehicleColor: node.value.color,
-                vehiclePlate: node.value.plate,
-                vehicleId: node.value.id,
-              }
-            : {};
-
-          setValues({ ...values, ...plateOrVinSearch, ...plateOrVin });
+        onInputChange={(value) => setFieldValue("plateOrVinSearch", value)}
+        onSelectionChange={(node) => {
+          if (node?.value) {
+            setValues({
+              ...values,
+              plateOrVinSearch: node.value?.plate ?? node.textValue,
+              plateOrVin: node.key as string,
+              vehicleModel: node.value.model.value.value,
+              vehicleColor: node.value.color,
+              vehicleId: node.value.id,
+            });
+          }
         }}
         localValue={values.plateOrVinSearch ?? ""}
         errorMessage={errors.plateOrVin}
@@ -75,6 +89,39 @@ export function VehicleTab(props: VehicleTabProps) {
         onChange={(value) => setFieldValue("vehicleColor", value)}
         errorMessage={errors.vehicleColor}
       />
+
+      <FormRow useFlex>
+        <TextField
+          label={t("Leo.speedLimit")}
+          value={values.speedLimit ?? ""}
+          isDisabled={props.isReadOnly}
+          onChange={(value) => setFieldValue("speedLimit", value)}
+          errorMessage={errors.speedLimit}
+          className="w-full"
+          isOptional
+        />
+
+        <TextField
+          label={t("Leo.vehicleSpeed")}
+          value={values.vehicleSpeed ?? ""}
+          isDisabled={props.isReadOnly}
+          onChange={(value) => setFieldValue("vehicleSpeed", value)}
+          errorMessage={errors.vehicleSpeed}
+          className="w-full"
+          isOptional
+        />
+
+        <SelectField
+          options={VEHICLE_PACE_TYPE_OPTIONS}
+          label={t("Leo.vehiclePaceType")}
+          selectedKey={values.vehiclePaceType}
+          isDisabled={props.isReadOnly}
+          onSelectionChange={(value) => setFieldValue("vehiclePaceType", value)}
+          errorMessage={errors.vehiclePaceType}
+          className="w-full"
+          isOptional
+        />
+      </FormRow>
     </TabsContent>
   );
 }

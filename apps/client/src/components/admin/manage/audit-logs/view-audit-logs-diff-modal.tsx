@@ -1,14 +1,14 @@
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import ReactDiffViewer from "react-diff-viewer-continued";
 import type { AuditLog } from "@snailycad/types";
 import { useTranslations } from "use-intl";
 import { classNames } from "lib/classNames";
 
 export function ViewAuditLogsDiffModal() {
-  const { isOpen, closeModal, getPayload } = useModal();
-  const auditLog = getPayload<AuditLog>(ModalIds.ViewAuditLogData);
+  const modalState = useModal();
+  const auditLog = modalState.getPayload<AuditLog>(ModalIds.ViewAuditLogData);
   const t = useTranslations("Management");
   const tAuditLogs = useTranslations("AuditLogs");
 
@@ -25,8 +25,8 @@ export function ViewAuditLogsDiffModal() {
     <Modal
       title={t("auditLogDiff")}
       className={classNames("w-full", maxWidth)}
-      isOpen={isOpen(ModalIds.ViewAuditLogData)}
-      onClose={() => closeModal(ModalIds.ViewAuditLogData)}
+      isOpen={modalState.isOpen(ModalIds.ViewAuditLogData)}
+      onClose={() => modalState.closeModal(ModalIds.ViewAuditLogData)}
     >
       {hasActionData ? (
         <ReactDiffViewer

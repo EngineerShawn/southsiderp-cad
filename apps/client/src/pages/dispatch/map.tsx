@@ -15,7 +15,7 @@ import { ValueType } from "@snailycad/types";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import { useCall911State } from "state/dispatch/call-911-state";
 
-const Map = dynamic(async () => (await import("components/dispatch/map/Map")).Map, {
+const Map = dynamic(async () => (await import("components/dispatch/map/map")).Map, {
   ssr: false,
   loading: () => <p>loading map..</p>,
 });
@@ -63,7 +63,7 @@ export default function MapPage(props: Props) {
       <Title renderLayoutTitle={false}>Dispatch Live Map</Title>
 
       <Layout
-        permissions={{ fallback: (u) => u.isDispatch, permissions: [Permissions.LiveMap] }}
+        permissions={{ permissions: [Permissions.LiveMap] }}
         navMaxWidth="none"
         className="relative !px-0 !pb-0 !mt-0 !max-w-none"
       >

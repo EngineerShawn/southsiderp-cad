@@ -2,17 +2,18 @@ import { useTranslations } from "use-intl";
 
 import type { GetServerSideProps } from "next";
 import { getTranslations } from "lib/getTranslation";
-import { Button } from "@snailycad/ui";
+import { Alert, Button } from "@snailycad/ui";
 import { getSessionUser } from "lib/auth";
 import { useAuth } from "context/AuthContext";
 import { Title } from "components/shared/Title";
 import { VersionDisplay } from "components/shared/VersionDisplay";
-import { WhitelistStatus } from "@snailycad/types";
+import { Rank, WhitelistStatus } from "@snailycad/types";
 import { canUseThirdPartyConnections } from "lib/utils";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { Discord, Steam } from "react-bootstrap-icons";
 import { getAPIUrl } from "@snailycad/utils/api-url";
 import { useRouter } from "next/router";
+import { Nav } from "components/shared/nav/Nav";
 
 export default function AccountPendingPage() {
   const { user, cad } = useAuth();
@@ -21,8 +22,14 @@ export default function AccountPendingPage() {
   const t = useTranslations("Auth");
   const { DISCORD_AUTH, STEAM_OAUTH } = useFeatureEnabled();
 
-  if (user?.whitelistStatus !== WhitelistStatus.PENDING) {
-    return <main className="flex justify-center pt-20">This account is not pending access.</main>;
+  const isAccountPending =
+    user?.rank !== Rank.OWNER && user?.whitelistStatus === WhitelistStatus.PENDING;
+  if (!isAccountPending) {
+    return (
+      <main className="flex justify-center pt-20 dark:text-white">
+        This account is not pending access.
+      </main>
+    );
   }
 
   const rawSuccessMessage = router.query.success as string | undefined;
@@ -52,17 +59,14 @@ export default function AccountPendingPage() {
 
   return (
     <>
+      <Nav isAccountPending={isAccountPending} />
+
       <Title renderLayoutTitle={false}>{t("accountPending")}</Title>
 
       <main className="flex flex-col items-center justify-center pt-20">
         <div className="w-full max-w-md p-6 bg-gray-100 rounded-lg shadow-md dark:bg-primary dark:border dark:border-secondary">
           {successMessage ? (
-            <div
-              role="alert"
-              className="bg-green-500/80 text-black w-full py-1.5 px-3 my-3 rounded-md"
-            >
-              {successMessage}
-            </div>
+            <Alert type="success" className="my-3" message={successMessage} />
           ) : null}
 
           <h1 className="text-2xl font-semibold text-gray-800 dark:text-white">
@@ -75,27 +79,33 @@ export default function AccountPendingPage() {
             <span className="h-[2px] bg-secondary w-full rounded-md" />
           </div>
 
-          {showDiscordOAuth ? (
-            <Button
-              type="button"
-              onPress={handleDiscordLogin}
-              className="flex items-center justify-center gap-3 w-full"
-            >
-              <Discord />
-              {t("syncDiscord")}
-            </Button>
-          ) : null}
+          {showDiscordOAuth || showSteamOAuth ? (
+            <>
+              {showDiscordOAuth ? (
+                <Button
+                  type="button"
+                  onPress={handleDiscordLogin}
+                  className="flex items-center justify-center gap-3 w-full"
+                >
+                  <Discord />
+                  {t("syncDiscord")}
+                </Button>
+              ) : null}
 
-          {showSteamOAuth ? (
-            <Button
-              type="button"
-              onPress={handleSteamLogin}
-              className="flex items-center justify-center gap-3 w-full mt-2"
-            >
-              <Steam />
-              {t("syncSteam")}
-            </Button>
-          ) : null}
+              {showSteamOAuth ? (
+                <Button
+                  type="button"
+                  onPress={handleSteamLogin}
+                  className="flex items-center justify-center gap-3 w-full mt-2"
+                >
+                  <Steam />
+                  {t("syncSteam")}
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <p>{t("noThirdPartyConnections")}</p>
+          )}
         </div>
         <VersionDisplay cad={cad} />
 

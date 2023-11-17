@@ -4,18 +4,13 @@
     "target": "ESNext",
     "module": "ESNext",
     "incremental": true,
-
     "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "esModuleInterop": true,
     "moduleResolution": "node",
-    "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "strict": true,
+    "verbatimModuleSyntax": true,
+
     "baseUrl": ".",
     "paths": {
       "lib/*": ["./src/lib/*"],
@@ -25,8 +20,20 @@
       "context/*": ["./src/context/*"],
       "hooks/*": ["./src/hooks/*"],
       "state/*": ["./src/state/*"]
-    }
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.json",
+    "./i18n.config.mjs",
+    ".next/types/**/*.ts"
+  ],
   "exclude": ["node_modules"]
 }

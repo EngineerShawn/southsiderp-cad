@@ -4,14 +4,13 @@ import { parse } from "cookie";
 import { Cookie, USER_API_TOKEN_HEADER } from "@snailycad/config";
 import { signJWT, verifyJWT } from "utils/jwt";
 import { prisma } from "lib/data/prisma";
-import { Feature, type User } from "@snailycad/types";
-import { isFeatureEnabled } from "lib/cad";
+import { type User } from "@snailycad/types";
 import type { GetUserData } from "@snailycad/types/api";
 import { setCookie } from "utils/set-cookie";
 import { ACCESS_TOKEN_EXPIRES_MS, ACCESS_TOKEN_EXPIRES_S } from "./setUserTokenCookies";
 import { getUserFromUserAPIToken } from "./getUserFromUserAPIToken";
 import { validateUserData } from "./validateUser";
-import { createFeaturesObject } from "middlewares/is-enabled";
+import { Prisma } from "@prisma/client";
 
 export enum GetSessionUserErrors {
   InvalidAPIToken = "invalid user API token",
@@ -23,16 +22,10 @@ export enum GetSessionUserErrors {
   WhitelistDeclined = "whitelistDeclined",
 }
 
-export const userProperties = {
+export const userProperties = Prisma.validator<Prisma.UserSelect>()({
   id: true,
   username: true,
   rank: true,
-  isLeo: true,
-  isSupervisor: true,
-  isEmsFd: true,
-  isDispatch: true,
-  isTow: true,
-  isTaxi: true,
   banned: true,
   banReason: true,
   avatarUrl: true,
@@ -47,14 +40,17 @@ export const userProperties = {
   soundSettingsId: true,
   soundSettings: true,
   permissions: true,
-  apiToken: true,
   apiTokenId: true,
   roles: true,
   locale: true,
   createdAt: true,
   updatedAt: true,
   lastSeen: true,
-};
+  developerMode: true,
+  dispatchLayoutOrder: true,
+  emsFdLayoutOrder: true,
+  officerLayoutOrder: true,
+});
 
 interface GetSessionUserOptions<ReturnNullOnError extends boolean> {
   returnNullOnError?: ReturnNullOnError;
@@ -83,24 +79,17 @@ export async function getSessionUser(
     ? String(options.req.headers[USER_API_TOKEN_HEADER])
     : undefined;
 
-  const cad = await prisma.cad.findFirst({ select: { features: true } });
-  const isUserAPITokensEnabled = isFeatureEnabled({
-    feature: Feature.USER_API_TOKENS,
-    features: createFeaturesObject(cad?.features),
-    defaultReturn: false,
-  });
-
   /**
-   * `userApiTokenHeader` is defined (passed via headers) and `isUserAPITokensEnabled` is true (feature is enabled)
+   * `userApiTokenHeader` is defined (passed via headers)
    * -> then we will try to get the user from the user's API token
    *
    * -> if the user exists, we validate them if they're not banned, awaiting whitelisting, etc.
    * -> if the validation fails, we throw an error respectively.
    * -> if the validations succeeds, we return the user.
    *
-   * -> if `userApiTokenHeader` or `isUserAPITokensEnabled` is false, we will try to get the user from the access token (cookies)
+   * -> if `userApiTokenHeader` is false, we will try to get the user from the access token (cookies)
    */
-  if (userApiTokenHeader && isUserAPITokensEnabled) {
+  if (userApiTokenHeader) {
     const { apiToken, user } = await getUserFromUserAPIToken(userApiTokenHeader);
     validateUserData(user, options.req, options.returnNullOnError as false | undefined);
 
@@ -128,7 +117,7 @@ export async function getSessionUser(
   if (accessTokenPayload) {
     const user = await prisma.user.findUnique({
       where: { id: accessTokenPayload.userId },
-      select: { ...userProperties, password: true },
+      select: { ...userProperties, apiToken: true, password: true },
     });
 
     validateUserData(user, options.req, options.returnNullOnError as false | undefined);
@@ -144,7 +133,7 @@ export async function getSessionUser(
   const refreshTokenPayload = verifyJWT(refreshToken);
   if (refreshTokenPayload) {
     const user = await prisma.user.findFirst({
-      select: { ...userProperties, password: true },
+      select: { ...userProperties, apiToken: true, password: true },
       where: {
         sessions: {
           some: {
@@ -181,15 +170,14 @@ export async function getSessionUser(
 }
 
 function createUserData(user: User & { password: string; hasPassword?: boolean }) {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!user) return user as GetUserData;
 
-  const { tempPassword, password, ...rest } = user;
+  const { tempPassword, password = "", ...rest } = user;
   return {
     ...rest,
-    hasPassword: !!password.trim(),
+    hasPassword: Boolean(password.trim()),
     tempPassword: null,
-    hasTempPassword: !!tempPassword,
+    hasTempPassword: Boolean(tempPassword),
   } as GetUserData;
 }
 

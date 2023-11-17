@@ -1,14 +1,24 @@
-import { Context, Res, BodyParams } from "@tsed/common";
+import { Context, Res, BodyParams, QueryParams } from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { UseBefore } from "@tsed/platform-middlewares";
-import { ContentType, Delete, Description, Patch, Post } from "@tsed/schema";
+import { ContentType, Delete, Description, Patch, Post, Put } from "@tsed/schema";
 import { Cookie } from "@snailycad/config";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { setCookie } from "utils/set-cookie";
-import { cad, Rank, ShouldDoType, StatusViewMode, TableActionsAlignment } from "@prisma/client";
+import {
+  type cad,
+  Rank,
+  ShouldDoType,
+  type StatusViewMode,
+  type TableActionsAlignment,
+} from "@prisma/client";
 import { NotFound } from "@tsed/exceptions";
-import { CHANGE_PASSWORD_SCHEMA, CHANGE_USER_SCHEMA } from "@snailycad/schemas";
+import {
+  CHANGE_PASSWORD_SCHEMA,
+  CHANGE_USER_SCHEMA,
+  DASHBOARD_LAYOUT_SCHEMA,
+} from "@snailycad/schemas";
 import { compareSync, genSaltSync, hashSync } from "bcrypt";
 import { userProperties } from "lib/auth/getSessionUser";
 import { validateSchema } from "lib/data/validate-schema";
@@ -17,7 +27,9 @@ import { Socket } from "services/socket-service";
 import { handleStartEndOfficerLog } from "lib/leo/handleStartEndOfficerLog";
 import { setUserPreferencesCookies } from "lib/auth/setUserPreferencesCookies";
 import type * as APITypes from "@snailycad/types/api";
-import type { User } from "@snailycad/types";
+import { User } from "@snailycad/types";
+import { getActiveOfficer } from "~/lib/leo/activeOfficer";
+import { getActiveDeputy } from "~/lib/get-active-ems-fd-deputy";
 
 @Controller("/user")
 @UseBefore(IsAuth)
@@ -33,8 +45,24 @@ export class UserController {
   async getAuthUser(
     @Context("cad") cad: cad,
     @Context("user") user: User,
+    @Context() ctx: Context,
+    @QueryParams("includeActiveUnit", Boolean) includeActiveUnit?: boolean,
   ): Promise<APITypes.GetUserData> {
     const cadWithoutDiscordRoles = { ...cad, discordRoles: undefined };
+
+    if (includeActiveUnit) {
+      const [officer, deputy] = await Promise.all([
+        getActiveOfficer({ user, ctx }).catch(() => null),
+        getActiveDeputy({ user, ctx }).catch(() => null),
+      ]);
+
+      const unit = (officer ?? deputy ?? null) as
+        | APITypes.GetActiveOfficerData
+        | APITypes.GetEmsFdActiveDeputy
+        | null;
+
+      return { ...user, unit, cad: cadWithoutDiscordRoles };
+    }
 
     return { ...user, cad: cadWithoutDiscordRoles };
   }
@@ -50,10 +78,15 @@ export class UserController {
 
     const existing = await prisma.user.findUnique({
       where: { username: data.username },
+      select: { username: true },
     });
 
     if (existing && user.username !== data.username) {
       throw new ExtendedBadRequest({ username: "userAlreadyExists" });
+    }
+
+    if (!user.discordId && !/^([a-z_.\d]+)*[a-z\d]+$/i.test(data.username)) {
+      throw new ExtendedBadRequest({ username: "invalidUsername" });
     }
 
     let soundSettingsId = null;
@@ -89,6 +122,7 @@ export class UserController {
         tableActionsAlignment: data.tableActionsAlignment as TableActionsAlignment,
         soundSettingsId,
         locale: data.locale || null,
+        developerMode: data.developerMode ?? false,
       },
       select: userProperties,
     });
@@ -151,10 +185,15 @@ export class UserController {
     });
 
     if (officer) {
-      await prisma.officer.update({
-        where: { id: officer.id },
-        data: { statusId: null, activeCallId: null },
-      });
+      await prisma.$transaction([
+        prisma.officer.update({
+          where: { id: officer.id },
+          data: { statusId: null, activeCallId: null },
+        }),
+        prisma.dispatchChat.deleteMany({
+          where: { unitId: officer.id },
+        }),
+      ]);
 
       await handleStartEndOfficerLog({
         unit: officer,
@@ -182,6 +221,17 @@ export class UserController {
         userId,
         type: "ems-fd",
       });
+
+      await prisma.$transaction([
+        prisma.emsFdDeputy.update({
+          where: { id: emsFdDeputy.id },
+          data: { statusId: null, activeCallId: null },
+        }),
+        prisma.dispatchChat.deleteMany({
+          where: { unitId: emsFdDeputy.id },
+        }),
+      ]);
+
       await this.socket.emitUpdateDeputyStatus();
     }
 
@@ -239,5 +289,20 @@ export class UserController {
     });
 
     return true;
+  }
+
+  @Put("/dashboard-layout")
+  async editDashboardLayout(@BodyParams() body: unknown, @Context("user") user: User) {
+    const data = validateSchema(DASHBOARD_LAYOUT_SCHEMA, body);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        [data.type]: data.layout,
+      },
+      select: userProperties,
+    });
+
+    return updatedUser;
   }
 }

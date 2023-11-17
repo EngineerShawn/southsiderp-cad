@@ -1,6 +1,7 @@
-import type * as Prisma from "@prisma/client";
-import type { WhitelistStatus } from "./index.js";
+import type * as Prisma from "./prisma/index";
 import type * as Types from "./index.js";
+import type { GetEmsFdActiveDeputy } from "./api.js";
+import type { GetActiveOfficerData } from "./api.js";
 
 export * from "./api/admin.js";
 export * from "./api/dispatch.js";
@@ -10,62 +11,29 @@ export * from "./api/leo.js";
 export * from "./api/ems-fd.js";
 export * from "./api/cad-settings.js";
 export * from "./api/values.js";
-
-/** bleeter */
-/**
- * @method Get
- * @route /bleeter
- */
-export type GetBleeterData = (Prisma.BleeterPost & { user: Pick<Types.User, "username"> })[];
-
-/**
- * @method Get
- * @route /bleeter/:id
- */
-export type GetBleeterByIdData = GetBleeterData[number];
-
-/**
- * @method Post
- * @route /bleeter/:id
- */
-export type PostBleeterByIdData = GetBleeterByIdData;
-
-/**
- * @method Put
- * @route /bleeter/:id
- */
-export type PutBleeterByIdData = GetBleeterByIdData;
-
-/**
- * @method Post
- * @route /bleeter/:id
- */
-export type PostBleeterByIdImageData = Pick<Prisma.BleeterPost, "imageId">;
-
-/**
- * @method Delete
- * @route /bleeter/:id
- */
-export type DeleteBleeterByIdData = boolean;
+export * from "./api/bleeter.js";
 
 /** taxi */
 /**
  * @method Get
  * @route /taxi
  */
-export type GetTaxiCallsData = Types.TaxiCall[];
+export interface GetTaxiCallsData {
+  calls: Types.TaxiCall[];
+  totalCount: number;
+}
 
 /**
  * @method Post
  * @route /taxi
  */
-export type PostTaxiCallsData = GetTaxiCallsData[number];
+export type PostTaxiCallsData = GetTaxiCallsData["calls"][number];
 
 /**
  * @method Put
  * @route /taxi/:id
  */
-export type PutTaxiCallsData = GetTaxiCallsData[number];
+export type PutTaxiCallsData = GetTaxiCallsData["calls"][number];
 
 /**
  * @method Delete
@@ -78,19 +46,22 @@ export type DeleteTaxiCallsData = boolean;
  * @method Get
  * @route /tow
  */
-export type GetTowCallsData = Types.TowCall[];
+export interface GetTowCallsData {
+  calls: Types.TowCall[];
+  totalCount: number;
+}
 
 /**
  * @method Post
  * @route /tow
  */
-export type PostTowCallsData = GetTowCallsData[number];
+export type PostTowCallsData = GetTowCallsData["calls"][number];
 
 /**
  * @method Put
  * @route /tow/:id
  */
-export type PutTowCallsData = GetTowCallsData[number];
+export type PutTowCallsData = GetTowCallsData["calls"][number];
 
 /**
  * @method Delete
@@ -115,7 +86,7 @@ export interface PostLoginUserData {
  */
 export type PostRegisterUserData = PostLoginUserData & {
   isOwner: boolean;
-  whitelistStatus?: WhitelistStatus;
+  whitelistStatus?: Types.WhitelistStatus;
 };
 
 /**
@@ -145,7 +116,11 @@ export type DeleteDisable2FAData = boolean;
  * @route /user
  */
 // todo: add cad properties
-export type GetUserData = Types.User & { cad: Prisma.cad };
+export type GetUserData = Types.User & {
+  apiToken?: Prisma.ApiToken | null;
+  cad: Prisma.cad;
+  unit?: GetActiveOfficerData | GetEmsFdActiveDeputy | null;
+};
 
 /**
  * @method Patch
@@ -169,13 +144,17 @@ export type PostUserPasswordData = boolean;
  * @method Put
  * @route /user/api-token
  */
-export type PutUserEnableDisableApiTokenData = Types.User;
+export type PutUserEnableDisableApiTokenData = Types.User & {
+  apiToken?: Prisma.ApiToken | null;
+};
 
 /**
  * @method Delete
  * @route /user/api-token
  */
-export type DeleteUserRegenerateApiTokenData = Types.User;
+export type DeleteUserRegenerateApiTokenData = Types.User & {
+  apiToken?: Prisma.ApiToken | null;
+};
 
 /** truck logs */
 /**
@@ -405,7 +384,8 @@ export type DeleteCitizenWeaponData = boolean;
  * @route /businesses
  */
 export interface GetBusinessesData {
-  businesses: (Types.Employee & { business: Prisma.Business })[];
+  ownedBusinesses: (Types.Employee & { business: Prisma.Business })[];
+  joinedBusinesses: (Types.Employee & { business: Prisma.Business })[];
   joinableBusinesses: Prisma.Business[];
 }
 
@@ -416,8 +396,7 @@ export interface GetBusinessesData {
 export type GetBusinessByIdData = Prisma.Business & {
   businessPosts: Prisma.BusinessPost[];
   vehicles: Types.RegisteredVehicle[];
-  employees: Omit<GetBusinessesData["businesses"][number], "business">[];
-  citizen: Pick<Prisma.Citizen, "name" | "surname" | "id">;
+  employees: Omit<GetBusinessesData["ownedBusinesses"][number], "business">[];
   employee: Types.Employee | null;
   roles: (Prisma.EmployeeValue & { value: Prisma.Value })[];
 };
@@ -447,7 +426,7 @@ export type DeleteBusinessByIdData = boolean;
  * @method POST
  * @route /businesses/join
  */
-export type PostJoinBusinessData = GetBusinessesData["businesses"][number];
+export type PostJoinBusinessData = GetBusinessesData["ownedBusinesses"][number];
 
 /**
  * @method POST
@@ -456,14 +435,14 @@ export type PostJoinBusinessData = GetBusinessesData["businesses"][number];
 export interface PostCreateBusinessData {
   business: Prisma.Business;
   id: Prisma.Business["id"];
-  employee: GetBusinessesData["businesses"][number];
+  employee: GetBusinessesData["ownedBusinesses"][number];
 }
 
 /**
  * @method PUT
  * @route /businesses/employees/:businessId/:id
  */
-export type PutBusinessEmployeesData = GetBusinessesData["businesses"][number];
+export type PutBusinessEmployeesData = GetBusinessesData["ownedBusinesses"][number];
 
 /**
  * @method DELETE
@@ -579,3 +558,61 @@ export type PutNotesData = Types.Note;
  * @route /notes/:id
  */
 export type DeleteNotesData = boolean;
+
+/** pets */
+/**
+ * @method GET
+ * @route /pets
+ */
+export interface GetUserPetsData {
+  totalCount: number;
+  pets: Types.Pet[];
+}
+
+/**
+ * @method GET
+ * @route /pets/:id
+ */
+export type GetPetByIdData = Types.Pet;
+
+/**
+ * @method POST
+ * @route /pets
+ */
+export type PostPetsData = Types.Pet;
+
+/**
+ * @method POST
+ * @route /pets/:petId/medical-records
+ */
+export type PostPetByIdMedicalRecordsData = Types.PetMedicalRecord;
+
+/**
+ * @method PUT
+ * @route /pets/:petId/medical-records/:id
+ */
+export type PutPetByIdMedicalRecordsData = Types.PetMedicalRecord;
+
+/**
+ * @method DELETE
+ * @route /pets/:petId/medical-records/:id
+ */
+export type DeletePetByIdMedicalRecordsData = boolean;
+
+/**
+ * @method POST
+ * @route /pets/:petId/notes
+ */
+export type PostPetByIdNotesData = Types.Note;
+
+/**
+ * @method PUT
+ * @route /pets/:petId/notes/:id
+ */
+export type PutPetByIdNotesData = Types.Note;
+
+/**
+ * @method DELETE
+ * @route /pets/:petId/notes/:id
+ */
+export type DeletePetByIdNotesData = boolean;

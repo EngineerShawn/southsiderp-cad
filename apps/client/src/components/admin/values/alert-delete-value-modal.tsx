@@ -1,6 +1,6 @@
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import { hasValueObj, isBaseValue } from "@snailycad/utils/typeguards";
 import type { DeleteValueByIdData } from "@snailycad/types/api";
@@ -21,7 +21,7 @@ export function AlertDeleteValueModal<T extends AnyValue>(props: AlertDeleteValu
   const { state, execute } = useFetch();
   const t = useTranslations("Values");
   const typeT = useTranslations(props.type);
-  const { closeModal } = useModal();
+  const modalState = useModal();
   const [tempValue, valueState] = props.valueState;
 
   async function handleDelete() {
@@ -43,13 +43,13 @@ export function AlertDeleteValueModal<T extends AnyValue>(props: AlertDeleteValu
       });
 
       valueState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteValue);
+      modalState.closeModal(ModalIds.AlertDeleteValue);
     } else {
       if (json) {
         props.asyncTable.remove(tempValue.id);
         valueState.setTempId(null);
 
-        closeModal(ModalIds.AlertDeleteValue);
+        modalState.closeModal(ModalIds.AlertDeleteValue);
       }
     }
   }

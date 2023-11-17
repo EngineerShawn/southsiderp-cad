@@ -1,4 +1,12 @@
-import { Feature, Rank, WhitelistStatus, cad, MiscCadSettings } from "@prisma/client";
+/* eslint-disable unicorn/number-literal-case */
+import {
+  Feature,
+  WhitelistStatus,
+  type cad,
+  type MiscCadSettings,
+  DiscordWebhookType,
+  type Officer,
+} from "@prisma/client";
 import { UPDATE_UNIT_SCHEMA, UPDATE_UNIT_CALLSIGN_SCHEMA } from "@snailycad/schemas";
 import {
   PathParams,
@@ -6,40 +14,44 @@ import {
   Context,
   QueryParams,
   MultipartFile,
-  PlatformMulterFile,
+  type PlatformMulterFile,
 } from "@tsed/common";
 import { Controller } from "@tsed/di";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { UseBeforeEach } from "@tsed/platform-middlewares";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { validateMaxDivisionsPerUnit } from "controllers/leo/my-officers/MyOfficersController";
-import {
-  combinedUnitProperties,
-  leoProperties,
-  _leoProperties,
-  unitProperties,
-  combinedEmsFdUnitProperties,
-} from "lib/leo/activeOfficer";
 import { findUnit } from "lib/leo/findUnit";
 import { updateOfficerDivisionsCallsigns } from "lib/leo/utils";
 import { validateDuplicateCallsigns } from "lib/leo/validateDuplicateCallsigns";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
-import { IsAuth } from "middlewares/is-auth";
+import { IsAuth } from "middlewares/auth/is-auth";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { Socket } from "services/socket-service";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { manyToManyHelper } from "lib/data/many-to-many";
-import { isCuid } from "cuid";
 import type * as APITypes from "@snailycad/types/api";
-import { isFeatureEnabled } from "lib/cad";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { isFeatureEnabled } from "lib/upsert-cad";
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
 import { validateImageURL } from "lib/images/validate-image-url";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
 import fs from "node:fs/promises";
 import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
 import { getImageWebPPath } from "lib/images/get-image-webp-path";
 import { createWhere } from "controllers/leo/create-where-obj";
+import {
+  leoProperties,
+  unitProperties,
+  _leoProperties,
+  combinedUnitProperties,
+  combinedEmsFdUnitProperties,
+} from "utils/leo/includes";
+import { getTranslator } from "~/utils/get-translator";
+import { type APIEmbed } from "discord-api-types/v10";
+import { sendRawWebhook, sendDiscordWebhook } from "~/lib/discord/webhooks";
+import { type Citizen, type EmsFdDeputy, type LeoWhitelistStatus } from "@snailycad/types";
+import { generateCallsign } from "@snailycad/utils";
 
 const ACTIONS = ["SET_DEPARTMENT_DEFAULT", "SET_DEPARTMENT_NULL", "DELETE_UNIT"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -62,7 +74,6 @@ export class AdminManageUnitsController {
   @Get("/")
   @Description("Get all the units in the CAD")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewUnits,
       Permissions.DeleteUnits,
@@ -113,7 +124,6 @@ export class AdminManageUnitsController {
 
   @Get("/prune")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits, Permissions.DeleteUnits],
   })
   @Description("Get inactive units by days and departmentId")
@@ -149,7 +159,6 @@ export class AdminManageUnitsController {
 
   @Delete("/prune")
   @UsePermissions({
-    fallback: (u) => u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits, Permissions.DeleteUnits],
   })
   async pruneInactiveUnits(
@@ -216,10 +225,9 @@ export class AdminManageUnitsController {
 
   @Get("/:id")
   @Description(
-    "Get a unit by the `id` or get all units from a user by the `discordId` or `steamId`",
+    "Get a unit by the `id` (/v1/admin/manage/units/xxxxxxxx) or get all units from a user by the `discordId` or `steamId` (/v1/admin/manage/units/null?discordId=xxxxx)",
   )
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [
       Permissions.ViewUnits,
       Permissions.DeleteUnits,
@@ -227,83 +235,90 @@ export class AdminManageUnitsController {
       Permissions.ManageAwardsAndQualifications,
     ],
   })
-  async getUnit(@PathParams("id") id: string): Promise<APITypes.GetManageUnitByIdData> {
+  async getUnit(
+    @PathParams("id") unitId: string,
+    @QueryParams("steamId", String) steamId?: string,
+    @QueryParams("discordId", String) discordId?: string,
+  ): Promise<APITypes.GetManageUnitByIdData> {
     const extraInclude = {
       qualifications: { include: { qualification: { include: { value: true } } } },
       logs: { take: 25, orderBy: { createdAt: "desc" } },
     } as const;
 
-    const isUnitId = isCuid(id);
+    if (steamId || discordId) {
+      const OR = [];
 
-    if (isUnitId) {
-      let unit: any = await prisma.officer.findUnique({
-        where: { id },
-        include: { ...leoProperties, ...extraInclude },
-      });
-
-      if (!unit) {
-        unit = await prisma.emsFdDeputy.findUnique({
-          where: { id },
-          include: { ...unitProperties, ...extraInclude },
-        });
+      if (steamId) {
+        OR.push({ user: { steamId } });
+      } else if (discordId) {
+        OR.push({ user: { discordId } });
       }
 
-      if (!unit) {
-        unit = await prisma.combinedLeoUnit.findUnique({
-          where: { id },
-          include: combinedUnitProperties,
-        });
-      }
+      const where = { OR };
 
-      if (!unit) {
-        unit = await prisma.combinedEmsFdUnit.findUnique({
-          where: { id },
-          include: combinedEmsFdUnitProperties,
-        });
-      }
+      const [userOfficers, userDeputies, userCombinedOfficers, userCombinedDeputies] =
+        await prisma.$transaction([
+          prisma.officer.findMany({
+            where,
+            include: { ...leoProperties, ...extraInclude },
+          }),
+          prisma.emsFdDeputy.findMany({
+            where,
+            include: { ...unitProperties, ...extraInclude },
+          }),
+          prisma.combinedLeoUnit.findMany({
+            where: { officers: { some: where } },
+            include: combinedUnitProperties,
+          }),
+          prisma.combinedEmsFdUnit.findMany({
+            where: { deputies: { some: where } },
+            include: combinedEmsFdUnitProperties,
+          }),
+        ]);
 
-      if (!unit) {
-        throw new NotFound("unitNotFound");
-      }
-
-      return unit;
+      return {
+        userOfficers,
+        userDeputies,
+        userCombinedUnits: [...userCombinedOfficers, ...userCombinedDeputies],
+      } as any;
     }
 
-    const where = {
-      OR: [{ user: { discordId: id } }, { user: { steamId: id } }],
-    };
+    let unit: any = await prisma.officer.findUnique({
+      where: { id: unitId },
+      include: { ...leoProperties, ...extraInclude },
+    });
 
-    const [userOfficers, userDeputies, userCombinedOfficers, userCombinedDeputies] =
-      await prisma.$transaction([
-        prisma.officer.findMany({
-          where,
-          include: { ...unitProperties, ...extraInclude },
-        }),
-        prisma.emsFdDeputy.findMany({
-          where,
-          include: { ...unitProperties, ...extraInclude },
-        }),
-        prisma.combinedLeoUnit.findMany({
-          where: { officers: { some: where } },
-          include: combinedUnitProperties,
-        }),
-        prisma.combinedEmsFdUnit.findMany({
-          where: { deputies: { some: where } },
-          include: combinedEmsFdUnitProperties,
-        }),
-      ]);
+    if (!unit) {
+      unit = await prisma.emsFdDeputy.findUnique({
+        where: { id: unitId },
+        include: { ...unitProperties, ...extraInclude },
+      });
+    }
 
-    return {
-      userOfficers,
-      userDeputies,
-      userCombinedUnits: [...userCombinedOfficers, ...userCombinedDeputies],
-    } as any;
+    if (!unit) {
+      unit = await prisma.combinedLeoUnit.findUnique({
+        where: { id: unitId },
+        include: combinedUnitProperties,
+      });
+    }
+
+    if (!unit) {
+      unit = await prisma.combinedEmsFdUnit.findUnique({
+        where: { id: unitId },
+        include: combinedEmsFdUnitProperties,
+      });
+    }
+
+    if (!unit) {
+      throw new NotFound("unitNotFound");
+    }
+
+    return unit;
   }
 
   @Put("/off-duty")
   @Description("Set specified units off-duty")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits],
   })
   async setSelectedOffDuty(
@@ -356,7 +371,6 @@ export class AdminManageUnitsController {
 
   @Put("/callsign/:unitId")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnitCallsigns, Permissions.ManageUnits],
   })
   @Description("Update a unit's callsign by its id")
@@ -364,6 +378,7 @@ export class AdminManageUnitsController {
     @Context("sessionUserId") sessionUserId: string,
     @PathParams("unitId") unitId: string,
     @BodyParams() body: unknown,
+    @Context("cad") cad: cad & { features?: Record<Feature, boolean> },
   ): Promise<APITypes.PutManageUnitCallsignData> {
     const data = validateSchema(UPDATE_UNIT_CALLSIGN_SCHEMA.partial(), body);
 
@@ -383,11 +398,18 @@ export class AdminManageUnitsController {
     const t = prismaNames[type];
 
     if (data.callsign && data.callsign2) {
+      const allowMultipleOfficersWithSameDeptPerUser = isFeatureEnabled({
+        feature: Feature.ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER,
+        defaultReturn: false,
+        features: cad.features,
+      });
+
       await validateDuplicateCallsigns({
         callsign1: data.callsign,
         callsign2: data.callsign2,
         unitId: unit.id,
         type,
+        userId: allowMultipleOfficersWithSameDeptPerUser && unit.userId ? unit.userId : undefined,
       });
     }
 
@@ -420,7 +442,6 @@ export class AdminManageUnitsController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits],
   })
   @Description("Update a unit by its id")
@@ -457,8 +478,12 @@ export class AdminManageUnitsController {
       features: cad.features,
     });
 
-    if (isBadgeNumbersEnabled && typeof data.badgeNumber !== "undefined" && !data.badgeNumber) {
-      throw new ExtendedBadRequest({ badgeNumber: "Required" });
+    if (
+      isBadgeNumbersEnabled &&
+      typeof data.badgeNumberString !== "undefined" &&
+      !data.badgeNumberString
+    ) {
+      throw new ExtendedBadRequest({ badgeNumberString: "Required" });
     }
 
     if (type === "officer") {
@@ -473,11 +498,12 @@ export class AdminManageUnitsController {
           throw new ExtendedBadRequest({ divisions: "Must have at least 1 item" });
         }
 
-        await validateMaxDivisionsPerUnit(data.divisions, cad);
+        validateMaxDivisionsPerUnit(data.divisions, cad);
 
         const disconnectConnectArr = manyToManyHelper(
           (unit.divisions as { id: string }[]).map((v) => v.id),
           data.divisions as string[],
+          { showUpsert: false },
         );
 
         await prisma.$transaction(
@@ -496,17 +522,17 @@ export class AdminManageUnitsController {
       data: {
         statusId: data.status,
         departmentId: data.department,
-        divisionId: data.division,
+        divisionId: type === "officer" ? undefined : data.division,
         rankId: data.rank,
         position: data.position,
-        suspended: data.suspended,
+        suspended: data.suspended ?? false,
         callsign2: data.callsign2,
         callsign: data.callsign,
-        badgeNumber: data.badgeNumber,
+        badgeNumberString: data.badgeNumberString,
         imageId: validatedImageURL,
         imageBlurData: await generateBlurPlaceholder(validatedImageURL),
-        userId: data.userId,
-        isTemporary: !!data.userId,
+        userId: data.userId || undefined,
+        isTemporary: Boolean(data.userId),
       },
       include: type === "officer" ? leoProperties : unitProperties,
     });
@@ -585,7 +611,6 @@ export class AdminManageUnitsController {
   @Post("/departments/:unitId")
   @Description("Accept or decline a unit into a department")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits],
   })
   async acceptOrDeclineUnit(
@@ -654,6 +679,8 @@ export class AdminManageUnitsController {
         executorId: sessionUserId,
       });
 
+      await sendUnitWhitelistStatusChangeWebhook(updated);
+
       return updated;
     }
 
@@ -670,6 +697,8 @@ export class AdminManageUnitsController {
           prisma,
           executorId: sessionUserId,
         });
+
+        await sendUnitWhitelistStatusChangeWebhook(updated);
 
         return { ...updated, deleted: true };
       }
@@ -693,6 +722,8 @@ export class AdminManageUnitsController {
           prisma,
           executorId: sessionUserId,
         });
+
+        await sendUnitWhitelistStatusChangeWebhook(updated);
 
         return updated;
       }
@@ -724,6 +755,7 @@ export class AdminManageUnitsController {
           prisma,
           executorId: sessionUserId,
         });
+        await sendUnitWhitelistStatusChangeWebhook(updated);
 
         return updated;
       }
@@ -736,13 +768,12 @@ export class AdminManageUnitsController {
   @Post("/:unitId/qualifications")
   @Description("Add a qualification to a unit")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits, Permissions.ManageAwardsAndQualifications],
   })
   async addUnitQualification(
     @PathParams("unitId") unitId: string,
-    @BodyParams("qualificationId") qualificationId: string,
     @Context("sessionUserId") sessionUserId: string,
+    @BodyParams("qualificationId") qualificationId?: string,
   ): Promise<APITypes.PostManageUnitAddQualificationData> {
     const unit = await findUnit(unitId);
 
@@ -760,7 +791,7 @@ export class AdminManageUnitsController {
     } as const;
 
     const qualificationValue = await prisma.qualificationValue.findUnique({
-      where: { id: qualificationId },
+      where: { id: String(qualificationId) },
     });
 
     if (!qualificationValue) {
@@ -792,7 +823,6 @@ export class AdminManageUnitsController {
 
   @Delete("/:unitId/qualifications/:qualificationId")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits, Permissions.ManageAwardsAndQualifications],
   })
   @Description("Delete a qualification from a unit")
@@ -833,7 +863,6 @@ export class AdminManageUnitsController {
   @Put("/:unitId/qualifications/:qualificationId")
   @Description("Suspend or unsuspend a unit's qualification")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.ManageUnits, Permissions.ManageAwardsAndQualifications],
   })
   async suspendOrUnsuspendUnitQualification(
@@ -890,7 +919,6 @@ export class AdminManageUnitsController {
 
   @Delete("/:unitId")
   @UsePermissions({
-    fallback: (u) => u.isSupervisor || u.rank !== Rank.USER,
     permissions: [Permissions.DeleteUnits],
   })
   async deleteUnit(
@@ -927,4 +955,56 @@ export class AdminManageUnitsController {
 
     return true;
   }
+}
+
+export async function sendUnitWhitelistStatusChangeWebhook(
+  unit: (Officer | EmsFdDeputy) & {
+    citizen: Pick<Citizen, "name" | "surname">;
+    whitelistStatus: LeoWhitelistStatus;
+  },
+) {
+  const t = await getTranslator({
+    type: "webhooks",
+    namespace: "WhitelistStatusChange",
+  });
+
+  const statuses = {
+    [WhitelistStatus.ACCEPTED]: { color: 0x00ff00, name: t("accepted") },
+    [WhitelistStatus.PENDING]: { color: 0xffa500, name: t("pending") },
+    [WhitelistStatus.DECLINED]: { color: 0xff0000, name: t("declined") },
+  } as const;
+
+  const cad = await prisma.cad.findFirst({
+    select: { miscCadSettings: { select: { callsignTemplate: true } } },
+  });
+
+  const status = statuses[unit.whitelistStatus.status].name;
+  const color = statuses[unit.whitelistStatus.status].color;
+  const unitName = `${unit.citizen.name} ${unit.citizen.surname}`;
+  const unitCallsign = generateCallsign(
+    unit as any,
+    cad?.miscCadSettings?.callsignTemplate ?? null,
+  );
+
+  const description = t("departmentChangeDescription", {
+    status,
+    unit: `${unitCallsign} ${unitName}`,
+  });
+
+  const embeds: APIEmbed[] = [
+    {
+      description,
+      color,
+      title: t("departmentChangeTitle"),
+    },
+  ];
+
+  await sendDiscordWebhook({
+    data: { embeds },
+    type: DiscordWebhookType.DEPARTMENT_WHITELIST_STATUS,
+  });
+  await sendRawWebhook({
+    type: DiscordWebhookType.DEPARTMENT_WHITELIST_STATUS,
+    data: unit,
+  });
 }

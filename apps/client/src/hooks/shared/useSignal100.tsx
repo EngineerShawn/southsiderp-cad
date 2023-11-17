@@ -1,30 +1,64 @@
 import * as React from "react";
 import { useAuth } from "context/AuthContext";
-import { useListener } from "@casper124578/use-socket.io";
+import { useListener } from "@casperiv/use-socket.io";
 import { SocketEvents } from "@snailycad/config";
 import { useTranslations } from "use-intl";
 import { useAudio } from "react-use";
 import { useCall911State } from "state/dispatch/call-911-state";
+import { Alert } from "@snailycad/ui";
+import { createWithEqualityFn } from "zustand/traditional";
+import { shallow } from "zustand/shallow";
+
+const useSignal100Store = createWithEqualityFn<{
+  playCount: number;
+  setPlayCount(value: number): void;
+}>()(
+  (set) => ({
+    playCount: 0,
+    setPlayCount: (value: number) => set({ playCount: value }),
+  }),
+  shallow,
+);
 
 const SIGNAL_100_SRC = "/sounds/signal100.mp3";
 export function useSignal100() {
-  const { cad } = useAuth();
-  const [enabled, setSign100] = React.useState<boolean>(
-    cad?.miscCadSettings?.signal100Enabled ?? false,
-  );
+  const { cad, user } = useAuth();
+  const { playCount, setPlayCount } = useSignal100Store();
 
-  const { user } = useAuth();
+  const miscCadSettings = cad?.miscCadSettings ?? {
+    signal100Enabled: false,
+    signal100RepeatAmount: 1,
+    signal100RepeatIntervalMs: 1000,
+  };
+
+  const signal100Enabled = miscCadSettings.signal100Enabled ?? false;
+  const signal100RepeatAmount = miscCadSettings.signal100RepeatAmount ?? 1;
+  const signal100RepeatIntervalMs = miscCadSettings.signal100RepeatIntervalMs ?? 1000;
+  const shouldPlaySignal100 = user?.soundSettings?.signal100 ?? true;
+
+  const [isSignal100Enabled, setSignal100] = React.useState<boolean>(signal100Enabled);
   const [audio, , controls] = useAudio({
     autoPlay: false,
     src: SIGNAL_100_SRC,
-  });
+    onEnded() {
+      setPlayCount(playCount + 1);
 
-  const shouldPlaySignal100 = user?.soundSettings?.signal100 ?? true;
+      if (playCount <= signal100RepeatAmount) {
+        // wait for the possible interval ms
+        setTimeout(() => {
+          controls.seek(0);
+          controls.play();
+        }, signal100RepeatIntervalMs);
+      }
+    },
+  });
 
   useListener(
     SocketEvents.Signal100,
     (value: boolean) => {
-      setSign100(value);
+      setSignal100(value);
+      setPlayCount(0);
+
       if (value) {
         controls.volume(0.3);
         controls.seek(0);
@@ -36,11 +70,7 @@ export function useSignal100() {
     [shouldPlaySignal100, controls],
   );
 
-  React.useEffect(() => {
-    setSign100(cad?.miscCadSettings?.signal100Enabled ?? false);
-  }, [cad?.miscCadSettings?.signal100Enabled]);
-
-  return { enabled, audio, Component };
+  return { enabled: isSignal100Enabled, audio, Component };
 }
 
 function Component({ audio, enabled }: { audio: any; enabled: boolean }) {
@@ -61,12 +91,16 @@ function Component({ audio, enabled }: { audio: any; enabled: boolean }) {
       {audio}
 
       {enabled ? (
-        <div role="alert" className="p-2 px-3 my-2 font-semibold text-white bg-red-500 rounded-md">
-          <p>
-            {t("signal100enabled")}{" "}
-            {callsWithSignal100.length > 0 ? `(${callsWithSignal100})` : null}
-          </p>
-        </div>
+        <Alert
+          className="my-2 font-semibold"
+          message={
+            <>
+              {t("signal100enabled")}{" "}
+              {callsWithSignal100.length > 0 ? `(${callsWithSignal100})` : null}
+            </>
+          }
+          type="error"
+        />
       ) : null}
     </>
   );

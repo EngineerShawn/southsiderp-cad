@@ -3,7 +3,7 @@ import * as React from "react";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
-import { type CustomField, Rank } from "@snailycad/types";
+import { type CustomField } from "@snailycad/types";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { requestAll } from "lib/utils";
 import { Title } from "components/shared/Title";
@@ -11,7 +11,7 @@ import { Permissions } from "@snailycad/permissions";
 import { Button } from "@snailycad/ui";
 import { useModal } from "state/modalState";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { ManageCustomFieldModal } from "components/admin/manage/custom-fields/ManageCustomFieldModal";
 import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
@@ -27,10 +27,10 @@ interface Props {
 export default function ManageCustomFields({ customFields: data }: Props) {
   const { state, execute } = useFetch();
   const { hasPermissions } = usePermission();
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Management");
   const common = useTranslations("Common");
-  const hasManagePermissions = hasPermissions([Permissions.ManageCustomFields], true);
+  const hasManagePermissions = hasPermissions([Permissions.ManageCustomFields]);
 
   const [search, setSearch] = React.useState("");
 
@@ -62,24 +62,23 @@ export default function ManageCustomFields({ customFields: data }: Props) {
     if (typeof json === "boolean" && json) {
       asyncTable.remove(tempField.id);
       tempFieldState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteCustomField);
+      modalState.closeModal(ModalIds.AlertDeleteCustomField);
     }
   }
 
   function handleEditClick(field: CustomField) {
     tempFieldState.setTempId(field.id);
-    openModal(ModalIds.ManageCustomField);
+    modalState.openModal(ModalIds.ManageCustomField);
   }
 
   function handleDeleteClick(field: CustomField) {
     tempFieldState.setTempId(field.id);
-    openModal(ModalIds.AlertDeleteCustomField);
+    modalState.openModal(ModalIds.AlertDeleteCustomField);
   }
 
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [Permissions.ManageCustomFields, Permissions.ViewCustomFields],
       }}
     >
@@ -94,7 +93,7 @@ export default function ManageCustomFields({ customFields: data }: Props) {
 
         {hasManagePermissions ? (
           <div>
-            <Button onPress={() => openModal(ModalIds.ManageCustomField)}>
+            <Button onPress={() => modalState.openModal(ModalIds.ManageCustomField)}>
               {t("createCustomField")}
             </Button>
           </div>
@@ -134,7 +133,7 @@ export default function ManageCustomFields({ customFields: data }: Props) {
           }))}
           columns={[
             { header: common("name"), accessorKey: "name" },
-            { header: "Category", accessorKey: "category" },
+            { header: t("category"), accessorKey: "category" },
             hasManagePermissions ? { header: common("actions"), accessorKey: "actions" } : null,
           ]}
         />

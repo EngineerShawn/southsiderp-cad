@@ -7,23 +7,25 @@ import type { GetServerSideProps } from "next";
 import { useTranslations } from "use-intl";
 import { Title } from "components/shared/Title";
 import { TabList } from "@snailycad/ui";
-import { Rank, ValueType } from "@snailycad/types";
+import { ValueType } from "@snailycad/types";
 import { usePermission, Permissions } from "hooks/usePermission";
 import type { GetManageUnitsData } from "@snailycad/types/api";
 import { AllUnitsTab } from "components/admin/manage/units/tabs/all-units-tab";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
+import { TableSkeletonLoader } from "components/shared/table/skeleton-loader";
 
 const DepartmentWhitelistingTab = dynamic(
   async () =>
     (await import("components/admin/manage/units/tabs/department-whitelisting-tab"))
       .DepartmentWhitelistingTab,
-  { ssr: false },
+
+  { ssr: false, loading: () => <TableSkeletonLoader /> },
 );
 
 const CallsignsTab = dynamic(
   async () =>
     (await import("components/admin/manage/units/tabs/callsigns-tab/callsigns-tab")).CallsignsTab,
-  { ssr: false },
+  { ssr: false, loading: () => <TableSkeletonLoader /> },
 );
 
 const DepartmentTimeLogsTab = dynamic(
@@ -50,17 +52,14 @@ export default function SupervisorPanelPage(props: Props) {
     valueTypes: [ValueType.DEPARTMENT],
   });
 
-  const hasViewPermissions = hasPermissions(
-    [
-      Permissions.ManageUnits,
-      Permissions.ViewUnits,
-      Permissions.DeleteUnits,
-      Permissions.ManageAwardsAndQualifications,
-    ],
-    true,
-  );
-  const hasManagePermissions = hasPermissions([Permissions.ManageUnits], true);
-  const hasManageCallsignPermissions = hasPermissions([Permissions.ManageUnitCallsigns], true);
+  const hasViewPermissions = hasPermissions([
+    Permissions.ManageUnits,
+    Permissions.ViewUnits,
+    Permissions.DeleteUnits,
+    Permissions.ManageAwardsAndQualifications,
+  ]);
+  const hasManagePermissions = hasPermissions([Permissions.ManageUnits]);
+  const hasManageCallsignPermissions = hasPermissions([Permissions.ManageUnitCallsigns]);
 
   const TABS = [];
 
@@ -92,7 +91,6 @@ export default function SupervisorPanelPage(props: Props) {
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: [
           Permissions.ViewUnits,
           Permissions.DeleteUnits,

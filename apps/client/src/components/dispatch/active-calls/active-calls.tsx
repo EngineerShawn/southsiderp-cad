@@ -1,49 +1,43 @@
 import * as React from "react";
-import { Manage911CallModal } from "components/dispatch/modals/Manage911CallModal";
 import { useRouter } from "next/router";
-import { Full911Call, useDispatchState } from "state/dispatch/dispatch-state";
-import { AssignedUnit, WhitelistStatus } from "@snailycad/types";
+import { type Full911Call, useDispatchState } from "state/dispatch/dispatch-state";
+import { type AssignedUnit, WhitelistStatus } from "@snailycad/types";
 import { useTranslations } from "use-intl";
 import useFetch from "lib/useFetch";
 import { useLeoState } from "state/leo-state";
 import { useEmsFdState } from "state/ems-fd-state";
-import { DispatchCallTowModal } from "components/dispatch/modals/CallTowModal";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
 import { useCallsFilters } from "state/callsFiltersState";
 import { Table, useAsyncTable, useTableState } from "components/shared/Table";
-import { FullDate } from "components/shared/FullDate";
 import { classNames } from "lib/classNames";
 import { usePermission } from "hooks/usePermission";
 import { defaultPermissions } from "@snailycad/permissions";
-import { Droppable } from "@snailycad/ui";
-import { DndActions } from "types/DndActions";
-import { AssignedUnitsColumn } from "./assigned-units-column";
+import { Droppable, FullDate, Status } from "@snailycad/ui";
+import { DndActions } from "types/dnd-actions";
+import { AssignedUnitsColumn } from "./columns/assigned-units-column";
 import type { Get911CallsData, Post911CallAssignUnAssign } from "@snailycad/types/api";
-import { useMounted } from "@casper124578/useful";
+import { useMounted } from "@casperiv/useful";
 import { CallDescription } from "./CallDescription";
 import { ActiveCallsHeader } from "./active-calls-header";
-import { ActiveCallsActionsColumn } from "./actions-column";
+import { ActiveCallsActionsColumn } from "./columns/actions-column";
 import { useCall911State } from "state/dispatch/call-911-state";
 import { useActiveCalls } from "hooks/realtime/use-active-calls";
-import { shallow } from "zustand/shallow";
-import { Status } from "components/shared/Status";
+import { Manage911CallModal } from "./modals/manage-911-call-modal";
+import { DispatchCallTowModal } from "./modals/call-tow-modal";
 
 interface Props {
   initialData: Get911CallsData;
 }
 
-function _ActiveCalls({ initialData }: Props) {
+function Active911Calls({ initialData }: Props) {
   const { hasPermissions } = usePermission();
   const draggingUnit = useDispatchState((state) => state.draggingUnit);
-  const call911State = useCall911State(
-    (state) => ({
-      calls: state.calls,
-      setCalls: state.setCalls,
-      currentlySelectedCall: state.currentlySelectedCall,
-      setCurrentlySelectedCall: state.setCurrentlySelectedCall,
-    }),
-    shallow,
-  );
+  const call911State = useCall911State((state) => ({
+    calls: state.calls,
+    setCalls: state.setCalls,
+    currentlySelectedCall: state.currentlySelectedCall,
+    setCurrentlySelectedCall: state.setCurrentlySelectedCall,
+  }));
 
   const isMounted = useMounted();
   const calls = isMounted ? call911State.calls : initialData.calls;
@@ -87,10 +81,7 @@ function _ActiveCalls({ initialData }: Props) {
     pagination: asyncTable.pagination,
   });
 
-  const hasDispatchPermissions = hasPermissions(
-    defaultPermissions.defaultDispatchPermissions,
-    (u) => u.isDispatch,
-  );
+  const hasDispatchPermissions = hasPermissions(defaultPermissions.defaultDispatchPermissions);
   const isDispatch = router.pathname === "/dispatch" && hasDispatchPermissions;
   const unit =
     router.pathname === "/officer"
@@ -141,7 +132,7 @@ function _ActiveCalls({ initialData }: Props) {
   }
 
   return (
-    <div className="rounded-md card">
+    <div className="rounded-md card mb-3">
       {audio.addedToCallAudio}
       {audio.incomingCallAudio}
       <ActiveCallsHeader asyncTable={asyncTable} calls={calls} />
@@ -236,4 +227,4 @@ function _ActiveCalls({ initialData }: Props) {
   );
 }
 
-export const ActiveCalls = React.memo(_ActiveCalls);
+export const ActiveCalls = React.memo(Active911Calls);

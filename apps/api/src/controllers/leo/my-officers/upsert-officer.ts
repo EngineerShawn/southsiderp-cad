@@ -1,20 +1,21 @@
 import { CREATE_OFFICER_SCHEMA } from "@snailycad/schemas";
 import {
-  cad,
-  Citizen,
-  DivisionValue,
+  type cad,
+  type Citizen,
+  type DivisionValue,
   Feature,
-  LeoWhitelistStatus,
-  MiscCadSettings,
-  Officer,
+  type LeoWhitelistStatus,
+  type MiscCadSettings,
+  type Officer,
   ShouldDoType,
-  User,
+  type User,
+  WhatPages,
 } from "@prisma/client";
-import { shouldCheckCitizenUserId } from "lib/citizen/hasCitizenAccess";
+import { shouldCheckCitizenUserId } from "lib/citizen/has-citizen-access";
 import { prisma } from "lib/data/prisma";
 import { validateSchema } from "lib/data/validate-schema";
 import { BadRequest, NotFound } from "@tsed/exceptions";
-import { isFeatureEnabled } from "lib/cad";
+import { isFeatureEnabled } from "lib/upsert-cad";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import { updateOfficerDivisionsCallsigns, validateMaxDepartmentsEachPerUser } from "lib/leo/utils";
 import { validateMaxDivisionsPerUnit } from "./MyOfficersController";
@@ -23,10 +24,13 @@ import { validateDuplicateCallsigns } from "lib/leo/validateDuplicateCallsigns";
 import { findNextAvailableIncremental } from "lib/leo/findNextAvailableIncremental";
 import { validateImageURL } from "lib/images/validate-image-url";
 import { getLastOfArray, manyToManyHelper } from "lib/data/many-to-many";
-import { leoProperties } from "lib/leo/activeOfficer";
+import { leoProperties } from "utils/leo/includes";
+
 import type * as APITypes from "@snailycad/types/api";
 import type { ZodSchema } from "zod";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
+import { WhitelistStatus } from "@snailycad/types";
+import { sendUnitWhitelistStatusChangeWebhook } from "~/controllers/admin/manage/units/manage-units-controller";
 
 interface CreateOfficerOptions {
   schema?: ZodSchema;
@@ -69,12 +73,18 @@ export async function upsertOfficer({
     features: cad.features,
   });
 
+  const allowMultipleOfficersWithSameDeptPerUser = isFeatureEnabled({
+    feature: Feature.ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER,
+    defaultReturn: false,
+    features: cad.features,
+  });
+
   if (divisionsEnabled) {
     if (!data.divisions || data.divisions.length <= 0) {
       throw new ExtendedBadRequest({ divisions: "Must have at least 1 item" });
     }
 
-    await validateMaxDivisionsPerUnit(data.divisions, cad);
+    validateMaxDivisionsPerUnit(data.divisions, cad);
   }
 
   if (user) {
@@ -92,6 +102,7 @@ export async function upsertOfficer({
     callsign2: data.callsign2,
     type: "leo",
     unitId: existingOfficer?.id,
+    userId: allowMultipleOfficersWithSameDeptPerUser ? user?.id : undefined,
   });
 
   if (user && !existingOfficer) {
@@ -113,8 +124,8 @@ export async function upsertOfficer({
     features: cad.features,
   });
 
-  if (isBadgeNumbersEnabled && !data.badgeNumber) {
-    throw new ExtendedBadRequest({ badgeNumber: "Required" });
+  if (isBadgeNumbersEnabled && !data.badgeNumberString) {
+    throw new ExtendedBadRequest({ badgeNumberString: "Required" });
   }
 
   const { defaultDepartment, department, whitelistStatusId } = await handleWhitelistStatus(
@@ -130,7 +141,10 @@ export async function upsertOfficer({
   let statusId: string | undefined;
   if (!user) {
     const onDutyStatus = await prisma.statusValue.findFirst({
-      where: { shouldDo: ShouldDoType.SET_ON_DUTY },
+      where: {
+        shouldDo: ShouldDoType.SET_ON_DUTY,
+        OR: [{ whatPages: { isEmpty: true } }, { whatPages: { has: WhatPages.LEO } }],
+      },
     });
 
     statusId = onDutyStatus?.id;
@@ -152,7 +166,7 @@ export async function upsertOfficer({
     userId: user?.id,
     departmentId: defaultDepartment ? defaultDepartment.id : data.department,
     rankId: newRankId,
-    badgeNumber: isBadgeNumbersEnabled ? data.badgeNumber : undefined,
+    badgeNumberString: isBadgeNumbersEnabled ? data.badgeNumberString : undefined,
     citizenId: citizen.id,
     imageId: validatedImageURL,
     imageBlurData: await generateBlurPlaceholder(validatedImageURL),
@@ -170,10 +184,15 @@ export async function upsertOfficer({
     include: leoProperties,
   });
 
+  if (officer.whitelistStatus?.status === WhitelistStatus.PENDING) {
+    await sendUnitWhitelistStatusChangeWebhook(officer);
+  }
+
   if (divisionsEnabled) {
     const disconnectConnectArr = manyToManyHelper(
       existingOfficer?.divisions.map((v) => v.id) ?? [],
       toIdString(data.divisions),
+      { showUpsert: false },
     );
 
     await updateOfficerDivisionsCallsigns({
@@ -221,6 +240,10 @@ function toIdString(array: (string | { value: string })[]) {
 async function upsertOfficerCitizen(
   options: Omit<CreateOfficerOptions, "body" | "schema"> & { data: any },
 ) {
+  if (options.citizen) {
+    return options.citizen;
+  }
+
   // means the officer that is being created is a temporary unit
   let citizen: { id: string; userId: string | null } | null = options.existingOfficer?.citizenId
     ? { id: options.existingOfficer.citizenId, userId: options.existingOfficer.userId }
@@ -228,6 +251,7 @@ async function upsertOfficerCitizen(
 
   if (!citizen) {
     if (!options.user) {
+      // temporary unit's citizen
       citizen = await prisma.citizen.create({
         data: {
           address: "",
@@ -246,15 +270,13 @@ async function upsertOfficerCitizen(
         cad: options.cad,
         user: options.user,
       });
-      citizen =
-        options.citizen ??
-        (await prisma.citizen.findFirst({
-          where: {
-            id: options.data.citizenId,
-            userId: checkCitizenUserId ? options.user.id : undefined,
-          },
-          select: { userId: true, id: true },
-        }));
+      citizen = await prisma.citizen.findFirst({
+        where: {
+          id: options.data.citizenId,
+          userId: checkCitizenUserId ? options.user.id : undefined,
+        },
+        select: { userId: true, id: true },
+      });
     }
   }
 

@@ -1,9 +1,9 @@
-import { Middleware, MiddlewareMethods, Context, Next } from "@tsed/common";
+import { Middleware, type MiddlewareMethods, Context, Next } from "@tsed/common";
 import { UseBefore } from "@tsed/platform-middlewares";
 import { StoreSet, useDecorators } from "@tsed/core";
-import { CadFeature, Feature as DatabaseFeature, Feature } from "@prisma/client";
-import type { Feature as TypesFeature } from "@snailycad/types";
-import { setCADFeatures } from "./is-auth";
+import { type CadFeature, Feature as DatabaseFeature, Feature } from "@prisma/client";
+import type { CadFeatureOptions, Feature as TypesFeature } from "@snailycad/types";
+import { setCADFeatures } from "./auth/is-auth";
 import { prisma } from "lib/data/prisma";
 import { FeatureNotEnabled } from "src/exceptions/feature-not-enabled";
 
@@ -17,7 +17,6 @@ export const DEFAULT_DISABLED_FEATURES: Partial<
   CUSTOM_TEXTFIELD_VALUES: { isEnabled: false },
   DISCORD_AUTH: { isEnabled: false },
   DMV: { isEnabled: false },
-  USER_API_TOKENS: { isEnabled: false },
   CITIZEN_RECORD_APPROVAL: { isEnabled: false },
   COMMON_CITIZEN_CARDS: { isEnabled: false },
   STEAM_OAUTH: { isEnabled: false },
@@ -31,16 +30,32 @@ export const DEFAULT_DISABLED_FEATURES: Partial<
   FORCE_STEAM_AUTH: { isEnabled: false },
   SIGNAL_100_CITIZEN: { isEnabled: false },
   FORCE_ACCOUNT_PASSWORD: { isEnabled: false },
+  USER_DEFINED_CALLSIGN_COMBINED_UNIT: { isEnabled: false },
+  REQUIRED_CITIZEN_IMAGE: { isEnabled: false },
+  LEO_EDITABLE_CITIZEN_PROFILE: { isEnabled: false },
+  ALLOW_MULTIPLE_UNITS_DEPARTMENTS_PER_USER: { isEnabled: false },
+  CITIZEN_RECORD_PAYMENTS: { isEnabled: false },
+};
+
+export type CadFeatures = Record<TypesFeature | DatabaseFeature, boolean> & {
+  options?: CadFeatureOptions;
 };
 
 export function createFeaturesObject(features?: CadFeature[] | undefined) {
-  const obj: Record<TypesFeature | DatabaseFeature, boolean> = {} as Record<
-    TypesFeature | DatabaseFeature,
-    boolean
-  >;
+  const obj: CadFeatures = {} as CadFeatures;
+  const featureExtraOptions: CadFeatureOptions = {} as CadFeatureOptions;
 
-  Object.keys(Feature).map((feature) => {
+  Object.keys(Feature).forEach((feature) => {
     const cadFeature = features?.find((v) => v.feature === feature);
+
+    if (
+      cadFeature?.extraFields &&
+      ([Feature.LICENSE_EXAMS, Feature.COURTHOUSE] as string[]).includes(feature)
+    ) {
+      featureExtraOptions[feature as keyof CadFeatureOptions] = cadFeature.extraFields
+        ? JSON.parse(cadFeature.extraFields as any)
+        : null;
+    }
 
     const isEnabled =
       // @ts-expect-error - this is fine
@@ -49,6 +64,7 @@ export function createFeaturesObject(features?: CadFeature[] | undefined) {
     obj[feature as TypesFeature | DatabaseFeature] = isEnabled;
   });
 
+  obj.options = featureExtraOptions;
   return obj;
 }
 
@@ -59,6 +75,7 @@ export function overwriteFeatures(options: {
   return {
     ...options.features,
     ...options.featuresToOverwrite,
+    options: options.features.options,
   };
 }
 

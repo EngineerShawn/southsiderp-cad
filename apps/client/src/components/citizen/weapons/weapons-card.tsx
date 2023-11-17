@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate, Status } from "@snailycad/ui";
 import type { Weapon } from "@snailycad/types";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useModal } from "state/modalState";
 import { RegisterWeaponModal } from "./register-weapon-modal";
 import { useTranslations } from "use-intl";
@@ -9,18 +9,16 @@ import { AlertModal } from "components/modal/AlertModal";
 import useFetch from "lib/useFetch";
 import { Table, useTableState } from "components/shared/Table";
 import { useFeatureEnabled } from "hooks/useFeatureEnabled";
-import { FullDate } from "components/shared/FullDate";
 import { useAsyncTable } from "hooks/shared/table/use-async-table";
 import { useCitizen } from "context/CitizenContext";
 import type { DeleteCitizenWeaponData, GetCitizenWeaponsData } from "@snailycad/types/api";
 import { useTemporaryItem } from "hooks/shared/useTemporaryItem";
 import { SearchArea } from "components/shared/search/search-area";
-import { Status } from "components/shared/Status";
 
 export function WeaponsCard(props: Pick<GetCitizenWeaponsData, "weapons">) {
   const [search, setSearch] = React.useState("");
 
-  const { openModal, closeModal } = useModal();
+  const modalState = useModal();
   const { state, execute } = useFetch();
   const common = useTranslations("Common");
   const t = useTranslations("Weapons");
@@ -55,18 +53,18 @@ export function WeaponsCard(props: Pick<GetCitizenWeaponsData, "weapons">) {
     if (typeof json === "boolean" && json) {
       asyncTable.remove(tempWeapon.id);
       weaponState.setTempId(null);
-      closeModal(ModalIds.AlertDeleteWeapon);
+      modalState.closeModal(ModalIds.AlertDeleteWeapon);
     }
   }
 
   function handleEditClick(weapon: Omit<Weapon, "citizen">) {
     weaponState.setTempId(weapon.id);
-    openModal(ModalIds.RegisterWeapon);
+    modalState.openModal(ModalIds.RegisterWeapon);
   }
 
   function handleDeleteClick(weapon: Omit<Weapon, "citizen">) {
     weaponState.setTempId(weapon.id);
-    openModal(ModalIds.AlertDeleteWeapon);
+    modalState.openModal(ModalIds.AlertDeleteWeapon);
   }
 
   // weapon registration is disabled, don't bother showing this card.
@@ -80,7 +78,7 @@ export function WeaponsCard(props: Pick<GetCitizenWeaponsData, "weapons">) {
         <header className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">{t("yourWeapons")}</h1>
 
-          <Button onPress={() => openModal(ModalIds.RegisterWeapon)} size="xs">
+          <Button onPress={() => modalState.openModal(ModalIds.RegisterWeapon)} size="xs">
             {t("addWeapon")}
           </Button>
         </header>
@@ -134,12 +132,12 @@ export function WeaponsCard(props: Pick<GetCitizenWeaponsData, "weapons">) {
 
       <RegisterWeaponModal
         onCreate={(weapon) => {
-          closeModal(ModalIds.RegisterWeapon);
+          modalState.closeModal(ModalIds.RegisterWeapon);
           asyncTable.append(weapon);
         }}
         onUpdate={(previousWeapon, newWeapon) => {
           asyncTable.update(previousWeapon.id, newWeapon);
-          closeModal(ModalIds.RegisterWeapon);
+          modalState.closeModal(ModalIds.RegisterWeapon);
         }}
         weapon={tempWeapon}
         onClose={() => weaponState.setTempId(null)}

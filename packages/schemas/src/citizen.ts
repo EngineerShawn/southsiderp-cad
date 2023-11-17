@@ -20,15 +20,20 @@ export const CREATE_CITIZEN_SCHEMA = z.object({
   postal: z.string().max(255).nullish(),
   driversLicense: z.string().max(255).nullish(),
   weaponLicense: z.string().max(255).nullish(),
+  huntingLicense: z.string().max(255).nullish(),
+  fishingLicense: z.string().max(255).nullish(),
   pilotLicense: z.string().max(255).nullish(),
   waterLicense: z.string().max(255).nullish(),
   phoneNumber: z.string().max(255).nullish(),
   occupation: z.string().nullish(),
   additionalInfo: z.string().nullish(),
   driversLicenseCategory: z.array(z.any()).nullish(),
+  fishingLicenseCategory: z.array(z.any()).nullish(),
+  huntingLicenseCategory: z.array(z.any()).nullish(),
   pilotLicenseCategory: z.array(z.any()).nullish(),
   waterLicenseCategory: z.array(z.any()).nullish(),
   firearmLicenseCategory: z.array(z.any()).nullish(),
+  otherLicenseCategory: z.array(z.any()).nullish(),
   image: z.any().nullish(),
   socialSecurityNumber: z.string().max(30).nullish(),
   appearance: z.string().nullish(),
@@ -59,7 +64,8 @@ export const VEHICLE_SCHEMA = z.object({
 });
 
 export const TRANSFER_VEHICLE_SCHEMA = z.object({
-  ownerId: z.string().min(2).max(255),
+  ownerId: z.string().max(255).nullish(),
+  businessId: z.string().max(255).nullish(),
 });
 
 export const DELETE_VEHICLE_SCHEMA = z.object({
@@ -92,6 +98,10 @@ const SUSPENDED_SCHEMA = z.object({
   waterLicenseTimeEnd: END_TIME,
   firearmsLicense: z.boolean(),
   firearmsLicenseTimeEnd: END_TIME,
+  huntingLicense: z.boolean(),
+  huntingLicenseTimeEnd: END_TIME,
+  fishingLicense: z.boolean(),
+  fishingLicenseTimeEnd: END_TIME,
 });
 
 export const LICENSE_SCHEMA = CREATE_CITIZEN_SCHEMA.pick({
@@ -103,6 +113,11 @@ export const LICENSE_SCHEMA = CREATE_CITIZEN_SCHEMA.pick({
   firearmLicenseCategory: true,
   waterLicense: true,
   waterLicenseCategory: true,
+  fishingLicense: true,
+  fishingLicenseCategory: true,
+  huntingLicense: true,
+  huntingLicenseCategory: true,
+  otherLicenseCategory: true,
 }).extend({
   suspended: SUSPENDED_SCHEMA.nullish(),
 });
@@ -112,4 +127,30 @@ export const MEDICAL_RECORD_SCHEMA = z.object({
   description: z.string(),
   bloodGroup: z.string().max(255).nullable(),
   citizenId: z.string().min(2).max(255),
+  descriptionData: z.any().nullish(),
+});
+
+export const PET_SCHEMA = z.object({
+  citizenId: z.string().min(2),
+  name: z.string().min(2).max(255),
+  breed: z.string().min(2).max(255),
+  color: z.string().min(2).max(255),
+  image: z.any().nullish(),
+  dateOfBirth: z
+    .date()
+    .min(new Date(1900, 0, 1))
+    .max(new Date())
+    .describe("ISO format")
+    .or(z.string().min(2)),
+  weight: z.string().min(2).max(255),
+});
+
+export const PET_MEDICAL_RECORD_SCHEMA = z.object({
+  type: z.string().max(255),
+  description: z.string(),
+  descriptionData: z.any().nullish(),
+});
+
+export const PET_NOTE_SCHEMA = z.object({
+  text: z.string().max(255),
 });

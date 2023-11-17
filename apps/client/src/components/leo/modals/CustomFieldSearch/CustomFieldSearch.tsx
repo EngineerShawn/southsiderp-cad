@@ -1,52 +1,39 @@
 import * as React from "react";
-import type { CustomField } from "@snailycad/types";
-import { Loader, Button, TextField } from "@snailycad/ui";
-import { FormField } from "components/form/FormField";
+import { Loader, Button, TextField, SelectField, FormRow } from "@snailycad/ui";
 import { Modal } from "components/modal/Modal";
 import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
-import { Select } from "components/form/Select";
+import { ModalIds } from "types/modal-ids";
 import { CustomFieldResults } from "./CustomFieldResults";
 import { handleValidate } from "lib/handleValidate";
 import { CUSTOM_FIELD_SEARCH_SCHEMA } from "@snailycad/schemas";
 import type { GetManageCustomFieldsData, PostSearchCustomFieldData } from "@snailycad/types/api";
-
-let cache: CustomField[] = [];
+import { useQuery } from "@tanstack/react-query";
 
 export type CustomFieldResults = PostSearchCustomFieldData<true>;
 
 export function CustomFieldSearch() {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const { state, execute } = useFetch();
   const [results, setResults] = React.useState<CustomFieldResults | null>(null);
-  const [customFields, setCustomFields] = React.useState(cache);
 
-  // todo: react-query
-  const fetchOnOpen = React.useCallback(async () => {
-    const { json } = await execute<GetManageCustomFieldsData>({
-      path: "/admin/manage/custom-fields?includeAll=true",
-      method: "GET",
-    });
+  const { data: customFieldsData, isLoading } = useQuery({
+    refetchOnWindowFocus: false,
+    initialData: { customFields: [], totalCount: 0 },
+    queryKey: ["custom-fields"],
+    queryFn: async () => {
+      const { json } = await execute<GetManageCustomFieldsData>({
+        path: "/admin/manage/custom-fields?includeAll=true",
+        method: "GET",
+      });
 
-    if (Array.isArray(json)) {
-      cache = json;
-      setCustomFields(json);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    if (isOpen(ModalIds.CustomFieldSearch)) {
-      fetchOnOpen();
-    } else {
-      setResults(null);
-    }
-  }, [fetchOnOpen, isOpen]);
+      return json;
+    },
+  });
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
     const { json } = await execute<CustomFieldResults>({
@@ -69,40 +56,43 @@ export function CustomFieldSearch() {
   return (
     <Modal
       title={t("customFieldSearch")}
-      onClose={() => closeModal(ModalIds.CustomFieldSearch)}
-      isOpen={isOpen(ModalIds.CustomFieldSearch)}
+      onClose={() => modalState.closeModal(ModalIds.CustomFieldSearch)}
+      isOpen={modalState.isOpen(ModalIds.CustomFieldSearch)}
       className="w-[850px]"
     >
       <Formik validate={validate} initialValues={INITIAL_VALUES} onSubmit={onSubmit}>
-        {({ handleChange, setFieldValue, errors, values, isValid }) => (
+        {({ setFieldValue, errors, values, isValid }) => (
           <Form>
-            <FormField errorMessage={errors.customFieldId} label={t("customField")}>
-              <Select
-                disabled={state === "loading"}
-                onChange={handleChange}
-                name="customFieldId"
-                value={values.customFieldId}
-                values={customFields.map((field) => ({
+            <FormRow useFlex>
+              <SelectField
+                isLoading={isLoading}
+                isDisabled={isLoading}
+                errorMessage={errors.customFieldId}
+                label={t("customField")}
+                options={customFieldsData.customFields.map((field) => ({
                   value: field.id,
                   label: field.name,
                 }))}
+                onSelectionChange={(value) => setFieldValue("customFieldId", value)}
+                selectedKey={values.customFieldId}
+                className="w-64"
               />
-            </FormField>
 
-            <TextField
-              label={t("query")}
-              className="w-full relative"
-              name="query"
-              onChange={(value) => setFieldValue("query", value)}
-              value={values.query}
-            />
+              <TextField
+                label={t("query")}
+                className="w-full relative"
+                name="query"
+                onChange={(value) => setFieldValue("query", value)}
+                value={values.query}
+              />
+            </FormRow>
 
             {results ? <CustomFieldResults results={results} /> : null}
 
             <footer className="mt-4 pt-3 flex justify-end">
               <Button
                 type="reset"
-                onPress={() => closeModal(ModalIds.CustomFieldSearch)}
+                onPress={() => modalState.closeModal(ModalIds.CustomFieldSearch)}
                 variant="cancel"
               >
                 {common("cancel")}

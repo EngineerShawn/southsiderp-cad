@@ -5,7 +5,7 @@ import { useModal } from "state/modalState";
 import { Form, Formik } from "formik";
 import useFetch from "lib/useFetch";
 import { useTranslations } from "next-intl";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import type { VehicleSearchResult } from "state/search/vehicle-search-state";
 import type { NameSearchResult } from "state/search/name-search-state";
 import type { PutNotesData, PostNotesData } from "@snailycad/types/api";
@@ -21,14 +21,14 @@ interface Props {
 }
 
 export function ManageNoteModal({ onCreate, onUpdate, onClose, currentResult, type, note }: Props) {
-  const { isOpen, closeModal } = useModal();
+  const modalState = useModal();
   const common = useTranslations("Common");
   const t = useTranslations("Leo");
   const { state, execute } = useFetch();
 
   function handleClose() {
     onClose?.();
-    closeModal(ModalIds.ManageNote);
+    modalState.closeModal(ModalIds.ManageNote);
   }
 
   async function onSubmit(values: typeof INITIAL_VALUES) {
@@ -70,7 +70,7 @@ export function ManageNoteModal({ onCreate, onUpdate, onClose, currentResult, ty
   return (
     <Modal
       title={t("manageNote")}
-      isOpen={isOpen(ModalIds.ManageNote)}
+      isOpen={modalState.isOpen(ModalIds.ManageNote)}
       onClose={handleClose}
       className="w-[600px]"
     >

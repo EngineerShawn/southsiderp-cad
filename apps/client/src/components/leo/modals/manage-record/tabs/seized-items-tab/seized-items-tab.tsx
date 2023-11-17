@@ -1,6 +1,6 @@
 import { Button, TabsContent } from "@snailycad/ui";
 import { useModal } from "state/modalState";
-import { ModalIds } from "types/ModalIds";
+import { ModalIds } from "types/modal-ids";
 import { useTranslations } from "use-intl";
 import { SeizedItemsTable } from "./seized-items-table";
 
@@ -10,7 +10,7 @@ interface SeizedItemsTabProps {
 
 export function SeizedItemsTab(props: SeizedItemsTabProps) {
   const t = useTranslations("Leo");
-  const { openModal } = useModal();
+  const modalState = useModal();
 
   return (
     <TabsContent value="seized-items-tab">
@@ -19,7 +19,7 @@ export function SeizedItemsTab(props: SeizedItemsTabProps) {
 
         <Button
           type="button"
-          onPress={() => openModal(ModalIds.ManageSeizedItems)}
+          onPress={() => modalState.openModal(ModalIds.ManageSeizedItems)}
           disabled={props.isReadOnly}
         >
           {t("add")}

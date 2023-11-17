@@ -1,13 +1,13 @@
 import { useTranslations } from "use-intl";
 import * as React from "react";
 import { useRouter } from "next/router";
-import { Button } from "@snailycad/ui";
+import { Button, FullDate } from "@snailycad/ui";
 import { Layout } from "components/Layout";
 import { getSessionUser } from "lib/auth";
 import { getTranslations } from "lib/getTranslation";
 import type { GetServerSideProps } from "next";
 import { useModal } from "state/modalState";
-import { type AnyValue, ValueType, Rank } from "@snailycad/types";
+import { type AnyValue, ValueType } from "@snailycad/types";
 import useFetch from "lib/useFetch";
 import { AdminLayout } from "components/admin/AdminLayout";
 import { getObjLength, isEmpty, requestAll, yesOrNoText } from "lib/utils";
@@ -17,8 +17,7 @@ import { useTableDataOfType, useTableHeadersOfType } from "lib/admin/values/valu
 import { OptionsDropdown } from "components/admin/values/import/options-dropdown";
 import { Title } from "components/shared/Title";
 import { AlertModal } from "components/modal/AlertModal";
-import { ModalIds } from "types/ModalIds";
-import { FullDate } from "components/shared/FullDate";
+import { ModalIds } from "types/modal-ids";
 import { valueRoutes } from "components/admin/Sidebar/routes";
 import type {
   DeleteValuesBulkData,
@@ -40,7 +39,8 @@ import { SearchArea } from "components/shared/search/search-area";
 import { useLoadValuesClientSide } from "hooks/useLoadValuesClientSide";
 import { toastMessage } from "lib/toastMessage";
 import Link from "next/link";
-import { BoxArrowUpRight, InfoCircle } from "react-bootstrap-icons";
+import { BoxArrowUpRight, CloudArrowUp, InfoCircle } from "react-bootstrap-icons";
+import { useAuth } from "context/AuthContext";
 
 const ManageValueModal = dynamic(
   async () => (await import("components/admin/values/ManageValueModal")).ManageValueModal,
@@ -77,15 +77,45 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
   const router = useRouter();
   const path = (router.query.path as string).toUpperCase().replace(/-/g, "_");
   const routeData = valueRoutes.find((v) => v.type === type);
+  const { user } = useAuth();
 
   useLoadValuesClientSide({
     // @ts-expect-error - this is fine
     valueTypes: pathsRecord[type] ? pathsRecord[type] : [],
   });
 
+  const isBaseObj = (
+    [
+      ValueType.ADDRESS_FLAG,
+      ValueType.BLOOD_GROUP,
+      ValueType.CITIZEN_FLAG,
+      ValueType.VEHICLE_FLAG,
+      ValueType.ETHNICITY,
+      ValueType.GENDER,
+      ValueType.IMPOUND_LOT,
+      ValueType.OFFICER_RANK,
+      ValueType.VEHICLE_TRIM_LEVEL,
+      ValueType.WEAPON_FLAG,
+    ] as string[]
+  ).includes(type);
   const [search, setSearch] = React.useState("");
   const asyncTable = useAsyncTable({
     search,
+    sortingSchema: {
+      value: isBaseObj ? "value" : "value.value",
+      gameHash: "hash",
+      isDisabled: isBaseObj ? "isDisabled" : "value.isDisabled",
+      createdAt: isBaseObj ? "createdAt" : "value.createdAt",
+      pairedUnitTemplate: "pairedUnitTemplate",
+      department: "department.value.value",
+      callsign: "callsign",
+      type: "type",
+      whitelisted: "whitelisted",
+      isDefaultDepartment: "isDefaultDepartment",
+      defaultOfficerRank: "defaultOfficerRank.value",
+      color: "color",
+      shouldDo: "shouldDo",
+    },
     fetchOptions: {
       onResponse(json: GetValuesData) {
         const [forType] = json;
@@ -99,10 +129,11 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
   });
 
   const [allSelected, setAllSelected] = React.useState(false);
+  const [isSavingOrder, setIsSavingOrder] = React.useState(false);
   const [tempValue, valueState] = useTemporaryItem(asyncTable.items);
   const { state, execute } = useFetch();
 
-  const { isOpen, openModal, closeModal } = useModal();
+  const modalState = useModal();
   const t = useTranslations("Values");
   const typeT = useTranslations(type);
   const common = useTranslations("Common");
@@ -110,20 +141,21 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
   const extraTableHeaders = useTableHeadersOfType(type);
   const extraTableData = useTableDataOfType(type);
   const tableState = useTableState({
+    sorting: asyncTable.sorting,
     pagination: asyncTable.pagination,
     dragDrop: { onListChange: setList },
   });
 
   const tableHeaders = React.useMemo(() => {
     return [
-      { header: "ID", accessorKey: "id" },
-      { header: "Value", accessorKey: "value" },
+      user?.developerMode ? { header: common("id"), accessorKey: "id" } : null,
+      { header: t("value"), accessorKey: "value" },
       ...extraTableHeaders,
       { header: t("isDisabled"), accessorKey: "isDisabled" },
       { header: common("createdAt"), accessorKey: "createdAt" },
       { header: common("actions"), accessorKey: "actions" },
     ] as AccessorKeyColumnDef<{ id: string }, "id">[];
-  }, [extraTableHeaders, t, common]);
+  }, [extraTableHeaders, t, common, user?.developerMode]);
 
   async function setList(list: AnyValue[]) {
     if (!hasTableDataChanged(asyncTable.items, list)) return;
@@ -139,6 +171,7 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
       asyncTable.update(value.id, value);
     }
 
+    setIsSavingOrder(true);
     await execute<PutValuePositionsData>({
       path: `/admin/values/${type.toLowerCase()}/positions`,
       method: "PUT",
@@ -148,16 +181,20 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
         }),
       },
     });
+
+    setTimeout(() => {
+      setIsSavingOrder(false);
+    }, 1000);
   }
 
   function handleDeleteClick(value: AnyValue) {
     valueState.setTempId(value.id);
-    openModal(ModalIds.AlertDeleteValue);
+    modalState.openModal(ModalIds.AlertDeleteValue);
   }
 
   function handleEditClick(value: AnyValue) {
     valueState.setTempId(value.id);
-    openModal(ModalIds.ManageValue);
+    modalState.openModal(ModalIds.ManageValue);
   }
 
   async function handleDeleteSelected() {
@@ -180,7 +217,7 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
 
       setAllSelected(false);
       tableState.setRowSelection({});
-      closeModal(ModalIds.AlertDeleteSelectedValues);
+      modalState.closeModal(ModalIds.AlertDeleteSelectedValues);
 
       toastMessage({
         title: "Delete Values",
@@ -195,12 +232,12 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
 
   React.useEffect(() => {
     // reset form values
-    if (!isOpen(ModalIds.ManageValue) && !isOpen(ModalIds.AlertDeleteValue)) {
+    if (!modalState.isOpen(ModalIds.ManageValue) && !modalState.isOpen(ModalIds.AlertDeleteValue)) {
       // timeout: wait for modal to close
       setTimeout(() => valueState.setTempId(null), 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [modalState]);
 
   if (!Object.keys(ValueType).includes(path)) {
     return (
@@ -215,7 +252,6 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
   return (
     <AdminLayout
       permissions={{
-        fallback: (u) => u.rank !== Rank.USER,
         permissions: routeData?.permissions ?? [],
       }}
     >
@@ -238,11 +274,14 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
 
         <div className="flex gap-2">
           {isEmpty(tableState.rowSelection) ? null : (
-            <Button onPress={() => openModal(ModalIds.AlertDeleteSelectedValues)} variant="danger">
+            <Button
+              onPress={() => modalState.openModal(ModalIds.AlertDeleteSelectedValues)}
+              variant="danger"
+            >
               {t("deleteSelectedValues")}
             </Button>
           )}
-          <Button onPress={() => openModal(ModalIds.ManageValue)}>{typeT("ADD")}</Button>
+          <Button onPress={() => modalState.openModal(ModalIds.ManageValue)}>{typeT("ADD")}</Button>
           <OptionsDropdown type={type} valueLength={asyncTable.items.length} />
         </div>
       </header>
@@ -257,12 +296,12 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
           <span>
             {getObjLength(tableState.rowSelection)} items selected.{" "}
             <Button
-              onClick={() => setAllSelected(true)}
+              onPress={() => setAllSelected(true)}
               variant="transparent"
               className="underline"
               size="xs"
             >
-              Select all {totalCount}?
+              {t("selectAll", { count: totalCount })}
             </Button>
           </span>
         </div>
@@ -271,12 +310,19 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
       {allSelected ? (
         <div className="flex items-center gap-2 px-4 py-2 card my-3 !bg-slate-900 !border-slate-500 border-2">
           <InfoCircle />
-          <span>{totalCount} items selected. </span>
+          {t("xItemsSelected", { count: totalCount })}
+        </div>
+      ) : null}
+
+      {isSavingOrder ? (
+        <div className="flex items-center gap-2 px-4 py-2 card my-3 !bg-slate-900 !border-slate-500 border-2">
+          <CloudArrowUp />
+          Saving..., please do not close the browser or refresh the page.
         </div>
       ) : null}
 
       {asyncTable.noItemsAvailable ? (
-        <p className="mt-5">There are no values yet for this type.</p>
+        <p className="mt-5">{t("noValuesForThisType")}</p>
       ) : (
         <Table
           tableState={tableState}
@@ -312,15 +358,14 @@ export default function ValuePath({ pathValues: { totalCount, type, values: data
                     </Tooltip.Trigger>
 
                     {isValueInUse(value) ? (
-                      <Tooltip.Portal className="z-[999]">
+                      <Tooltip.Portal>
                         <Tooltip.Content
                           align="center"
                           side="left"
                           sideOffset={5}
-                          className="rounded-md bg-white dark:bg-tertiary dark:text-white p-4 max-w-[350px]"
+                          className="rounded-md bg-white dark:bg-tertiary dark:text-white p-4 max-w-[350px] z-999"
                         >
-                          You cannot delete this value because it is being used by another database
-                          item. You must first delete that item.
+                          {t("cannotDeleteTooltip")}
                         </Tooltip.Content>
                       </Tooltip.Portal>
                     ) : null}

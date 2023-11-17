@@ -1,20 +1,22 @@
 import fs from "node:fs/promises";
-import { Controller, UseBeforeEach, PlatformMulterFile, MultipartFile } from "@tsed/common";
+import { Controller, UseBeforeEach, type PlatformMulterFile, MultipartFile } from "@tsed/common";
 import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { QueryParams, BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { BadRequest, NotFound } from "@tsed/exceptions";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { Feature, cad, User, MiscCadSettings, Rank } from "@prisma/client";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { type Feature, type cad, type User, type MiscCadSettings } from "@prisma/client";
 import { Permissions, UsePermissions } from "middlewares/use-permissions";
-import { leoProperties } from "lib/leo/activeOfficer";
-import { AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
+import { leoProperties } from "utils/leo/includes";
+
+import { type AllowedFileExtension, allowedFileExtensions } from "@snailycad/config";
 import { ExtendedBadRequest } from "src/exceptions/extended-bad-request";
 import type * as APITypes from "@snailycad/types/api";
 import { upsertOfficer } from "./upsert-officer";
 import generateBlurPlaceholder from "lib/images/generate-image-blur-data";
 import { hasPermission } from "@snailycad/permissions";
 import { getImageWebPPath } from "lib/images/get-image-webp-path";
+import { createWhere } from "../create-where-obj";
 
 @Controller("/leo")
 @UseBeforeEach(IsAuth)
@@ -22,15 +24,27 @@ import { getImageWebPPath } from "lib/images/get-image-webp-path";
 export class MyOfficersController {
   @Get("/")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   @Description("Get all the current user's officers.")
-  async getUserOfficers(@Context("user") user: User): Promise<APITypes.GetMyOfficersData> {
+  async getUserOfficers(
+    @Context("user") user: User,
+    @QueryParams("query") query: string,
+  ): Promise<APITypes.GetMyOfficersData> {
+    const where = createWhere({
+      query,
+      type: "OFFICER",
+      pendingOnly: false,
+      extraWhere: {
+        userId: user.id,
+      },
+    });
+
     const [totalCount, officers] = await prisma.$transaction([
-      prisma.officer.count({ where: { userId: user.id } }),
+      prisma.officer.count({ where }),
       prisma.officer.findMany({
-        where: { userId: user.id },
+        where,
+        orderBy: { updatedAt: "desc" },
         include: {
           ...leoProperties,
           qualifications: { include: { qualification: { include: { value: true } } } },
@@ -43,7 +57,6 @@ export class MyOfficersController {
 
   @Post("/")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async createOfficer(
@@ -57,7 +70,6 @@ export class MyOfficersController {
 
   @Put("/:id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async updateOfficer(
@@ -82,7 +94,6 @@ export class MyOfficersController {
 
   @Delete("/:id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async deleteOfficer(
@@ -111,7 +122,6 @@ export class MyOfficersController {
 
   @Get("/logs")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [
       Permissions.Leo,
       Permissions.ManageUnits,
@@ -129,7 +139,6 @@ export class MyOfficersController {
     const hasManageUnitsPermissions = hasPermission({
       permissionsToCheck: [Permissions.ManageUnits, Permissions.ViewUnits, Permissions.DeleteUnits],
       userToCheck: user,
-      fallback: (u) => u.rank !== Rank.USER,
     });
     const userIdObj = hasManageUnitsPermissions && isAdmin ? {} : { userId: user.id };
 
@@ -151,7 +160,6 @@ export class MyOfficersController {
 
   @Post("/image/:id")
   @UsePermissions({
-    fallback: (u) => u.isLeo,
     permissions: [Permissions.Leo],
   })
   async uploadImageToOfficer(
@@ -212,7 +220,7 @@ export class MyOfficersController {
   }
 }
 
-export async function validateMaxDivisionsPerUnit(
+export function validateMaxDivisionsPerUnit(
   arr: unknown[],
   cad: (cad & { miscCadSettings: MiscCadSettings }) | null,
 ) {

@@ -18,7 +18,7 @@ export const CREATE_OFFICER_SCHEMA = z.object({
   callsign: z.string().min(1).max(255),
   callsign2: z.string().min(1).max(255),
   rank: z.string().max(255).nullable(),
-  badgeNumber: z.number().min(1).optional(),
+  badgeNumberString: z.string().min(1).optional(),
   divisions: z.array(z.string().min(2).max(255).or(SELECT_VALUE)).optional(),
   image: z.any().or(z.string()).optional(),
   callsigns: z.record(INDIVIDUAL_CALLSIGN_SCHEMA).nullish(),
@@ -49,7 +49,7 @@ export const UPDATE_UNIT_SCHEMA = z.object({
   divisions: z.array(z.string().min(2).max(255).or(SELECT_VALUE)).nullish(),
   status: z.string().max(255).nullable(),
   suspended: z.boolean().nullable(),
-  badgeNumber: z.number().min(1).optional(),
+  badgeNumberString: z.string().min(1).optional(),
   callsigns: z.record(INDIVIDUAL_CALLSIGN_SCHEMA).nullish(),
   image: z.any().or(z.string()).optional(),
   userId: z.string().nullish(),
@@ -65,10 +65,12 @@ export const UPDATE_OFFICER_STATUS_SCHEMA = z.object({
   status: z.string().min(2).max(255),
   suspended: z.boolean().optional(),
   vehicleId: z.string().nullish(),
+  userDefinedCallsign: z.string().nullish(),
 });
 
 export const SELECT_OFFICER_SCHEMA = z.object({
-  officer: z.object({ id: z.string().min(2).max(255) }),
+  officerId: z.string().min(2),
+  userDefinedCallsign: z.string().nullish(),
 });
 
 export const LEO_INCIDENT_SCHEMA = z.object({
@@ -81,6 +83,11 @@ export const LEO_INCIDENT_SCHEMA = z.object({
   unitsInvolved: z.array(z.string().or(SELECT_VALUE)).min(0).optional(),
   isActive: z.boolean().nullish(),
   situationCodeId: z.string().max(255).nullish(),
+});
+
+export const EMS_FD_INCIDENT_SCHEMA = LEO_INCIDENT_SCHEMA.extend({
+  address: z.string().nullish(),
+  fireType: z.string().nullish(),
 });
 
 export const LEO_VEHICLE_LICENSE_SCHEMA = VEHICLE_SCHEMA.pick({
@@ -129,4 +136,23 @@ export const SWITCH_CALLSIGN_SCHEMA = z.object({
 
 export const IMPOUND_VEHICLE_SCHEMA = z.object({
   impoundLot: z.string().min(2),
+  descriptionData: z.any().nullish(),
+});
+
+export const MERGE_UNIT_SCHEMA = z.object({
+  ids: z.array(z.object({ entry: z.boolean().nullish(), id: z.string() })),
+  vehicleId: z.string().nullish(),
+  userDefinedCallsign: z
+    .string()
+    .nullish()
+    .transform((value) => (value && value.length <= 0 ? null : value)),
+});
+
+export const LICENSE_POINTS_SCHEMA = z.object({
+  driverLicensePoints: z.number().finite().min(0),
+  pilotLicensePoints: z.number().finite().min(0),
+  waterLicensePoints: z.number().finite().min(0),
+  firearmsLicensePoints: z.number().finite().min(0),
+  huntingLicensePoints: z.number().finite().min(0),
+  fishingLicensePoints: z.number().finite().min(0),
 });

@@ -3,45 +3,31 @@ import { ContentType, Delete, Description, Get, Post, Put } from "@tsed/schema";
 import { NotFound, InternalServerError, BadRequest } from "@tsed/exceptions";
 import { QueryParams, BodyParams, Context, PathParams } from "@tsed/platform-params";
 import { prisma } from "lib/data/prisma";
-import { IsAuth } from "middlewares/is-auth";
-import { unitProperties, _leoProperties } from "lib/leo/activeOfficer";
-import { LEO_INCIDENT_SCHEMA } from "@snailycad/schemas";
-import type { Officer, MiscCadSettings, CombinedLeoUnit } from "@prisma/client";
+import { IsAuth } from "middlewares/auth/is-auth";
+import { EMS_FD_INCIDENT_SCHEMA } from "@snailycad/schemas";
+import {
+  type Officer,
+  type MiscCadSettings,
+  type CombinedLeoUnit,
+  DiscordWebhookType,
+} from "@prisma/client";
 import { validateSchema } from "lib/data/validate-schema";
 import { Socket } from "services/socket-service";
 import { UsePermissions, Permissions } from "middlewares/use-permissions";
 import { officerOrDeputyToUnit } from "lib/leo/officerOrDeputyToUnit";
 import { findUnit } from "lib/leo/findUnit";
-import { getFirstOfficerFromActiveOfficer } from "lib/leo/utils";
+import { getUserOfficerFromActiveOfficer } from "lib/leo/utils";
 import type * as APITypes from "@snailycad/types/api";
 import { getNextIncidentId } from "lib/incidents/get-next-incident-id";
 import { assignUnitsInvolvedToIncident } from "lib/incidents/handle-involved-units";
 import { ActiveDeputy } from "middlewares/active-deputy";
-
-export const assignedUnitsInclude = {
-  include: {
-    officer: { include: _leoProperties },
-    deputy: { include: unitProperties },
-    combinedUnit: {
-      include: {
-        status: { include: { value: true } },
-        department: { include: { value: true } },
-        officers: {
-          include: _leoProperties,
-        },
-      },
-    },
-    combinedEmsFdUnit: {
-      include: {
-        status: { include: { value: true } },
-        department: { include: { value: true } },
-        deputies: {
-          include: unitProperties,
-        },
-      },
-    },
-  },
-};
+import { AuditLogActionType, createAuditLogEntry } from "@snailycad/audit-logger/server";
+import { _leoProperties, assignedUnitsInclude, unitProperties } from "utils/leo/includes";
+import { sendDiscordWebhook } from "~/lib/discord/webhooks";
+import { User } from "@snailycad/types";
+import type { APIEmbed } from "discord-api-types/v10";
+import { getTranslator } from "~/utils/get-translator";
+import { slateDataToString } from "@snailycad/utils/editor";
 
 export const incidentInclude = {
   creator: { include: unitProperties },
@@ -69,7 +55,6 @@ export class IncidentController {
       Permissions.ViewEmsFdIncidents,
       Permissions.ManageEmsFdIncidents,
     ],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async getAllIncidents(
     @QueryParams("activeType", String) activeType: ActiveTypes = "inactive",
@@ -119,7 +104,6 @@ export class IncidentController {
       Permissions.ViewEmsFdIncidents,
       Permissions.ManageEmsFdIncidents,
     ],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async getIncidentById(
     @PathParams("id") id: string,
@@ -136,15 +120,20 @@ export class IncidentController {
   @Post("/")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageEmsFdIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async createIncident(
     @BodyParams() body: unknown,
     @Context("cad") cad: { miscCadSettings: MiscCadSettings },
     @Context("activeOfficer") activeOfficer: (CombinedLeoUnit & { officers: Officer[] }) | Officer,
+    @Context("sessionUserId") sessionUserId: string,
+    @Context("user") user: User,
   ): Promise<APITypes.PostIncidentsData<"ems-fd">> {
-    const data = validateSchema(LEO_INCIDENT_SCHEMA, body);
-    const officer = getFirstOfficerFromActiveOfficer({ allowDispatch: true, activeOfficer });
+    const data = validateSchema(EMS_FD_INCIDENT_SCHEMA, body);
+    const officer = getUserOfficerFromActiveOfficer({
+      userId: sessionUserId,
+      allowDispatch: true,
+      activeOfficer,
+    });
     const maxAssignmentsToIncidents = cad.miscCadSettings.maxAssignmentsToIncidents ?? Infinity;
 
     const incident = await prisma.emsFdIncident.create({
@@ -158,6 +147,8 @@ export class IncidentController {
         isActive: data.isActive ?? false,
         situationCodeId: data.situationCodeId ?? null,
         postal: data.postal ?? null,
+        address: data.address ?? null,
+        fireType: data.fireType ?? null,
       },
       include: {
         unitsInvolved: true,
@@ -190,12 +181,18 @@ export class IncidentController {
       await this.socket.emitUpdateOfficerStatus();
     }
 
+    const webhookData = await createIncidentWebhookData(corrected, user.locale ?? "en");
+    await sendDiscordWebhook({
+      data: webhookData,
+      type: DiscordWebhookType.EMS_FD_INCIDENT_CREATED,
+      extraMessageData: { userDiscordId: user.discordId },
+    });
+
     return corrected;
   }
 
   @Post("/:type/:incidentId")
   @UsePermissions({
-    fallback: (u) => u.isDispatch || u.isLeo || u.isEmsFd,
     permissions: [Permissions.Dispatch, Permissions.Leo, Permissions.EmsFd],
   })
   async assignToIncident(
@@ -299,14 +296,13 @@ export class IncidentController {
   @Put("/:id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageEmsFdIncidents],
-    fallback: (u) => u.isDispatch || u.isLeo,
   })
   async updateIncident(
     @BodyParams() body: unknown,
     @Context("cad") cad: { miscCadSettings: MiscCadSettings },
     @PathParams("id") incidentId: string,
   ): Promise<APITypes.PutIncidentByIdData<"ems-fd">> {
-    const data = validateSchema(LEO_INCIDENT_SCHEMA, body);
+    const data = validateSchema(EMS_FD_INCIDENT_SCHEMA, body);
     const maxAssignmentsToIncidents = cad.miscCadSettings.maxAssignmentsToIncidents ?? Infinity;
 
     const incident = await prisma.emsFdIncident.findUnique({
@@ -329,6 +325,8 @@ export class IncidentController {
         isActive: data.isActive ?? false,
         postal: data.postal ?? null,
         situationCodeId: data.situationCodeId ?? null,
+        address: data.address ?? null,
+        fireType: data.fireType ?? null,
       },
     });
 
@@ -356,11 +354,32 @@ export class IncidentController {
     return normalizedIncident;
   }
 
+  @Delete("/purge")
+  @UsePermissions({
+    permissions: [Permissions.PurgeEmsFdIncidents],
+  })
+  async purgeIncidents(
+    @BodyParams("ids") ids: string[],
+    @Context("sessionUserId") sessionUserId: string,
+  ) {
+    if (!Array.isArray(ids)) return false;
+
+    await prisma.$transaction(ids.map((id) => prisma.emsFdIncident.delete({ where: { id } })));
+
+    await createAuditLogEntry({
+      translationKey: "emsFdIncidentsPurged",
+      action: { type: AuditLogActionType.EmsIncidentsPurged, new: ids },
+      executorId: sessionUserId,
+      prisma,
+    });
+
+    return true;
+  }
+
   @Delete("/:id")
   @Description("Delete an incident by its id")
   @UsePermissions({
     permissions: [Permissions.Dispatch, Permissions.ManageEmsFdIncidents],
-    fallback: (u) => u.isSupervisor,
   })
   async deleteIncident(
     @PathParams("id") incidentId: string,
@@ -379,4 +398,54 @@ export class IncidentController {
 
     return true;
   }
+}
+
+export async function createIncidentWebhookData(
+  incident: APITypes.PostIncidentsData<"ems-fd" | "leo">,
+  locale: string,
+) {
+  const t = await getTranslator({
+    type: "webhooks",
+    namespace: "Incidents",
+    locale,
+  });
+
+  const isEmsFd = "fireType" in incident;
+  const title = isEmsFd ? t("createdEms") : t("createdLeo");
+
+  return {
+    embeds: [
+      {
+        title,
+        description: slateDataToString(incident.descriptionData) || incident.description || "---",
+        fields: [
+          {
+            inline: true,
+            name: t("fireArmsInvolved"),
+            value: incident.firearmsInvolved ? t("yes") : t("no"),
+          },
+          {
+            inline: true,
+            name: t("injuriesOrFatalities"),
+            value: incident.injuriesOrFatalities ? t("yes") : t("no"),
+          },
+          {
+            inline: true,
+            name: t("arrestsMade"),
+            value: incident.arrestsMade ? t("yes") : t("no"),
+          },
+          {
+            name: t("situationCode"),
+            value: incident.situationCode?.value.value ?? t("none"),
+            inline: true,
+          },
+          {
+            name: t("postal"),
+            value: incident.postal ?? t("none"),
+            inline: true,
+          },
+        ],
+      },
+    ],
+  } as { embeds: APIEmbed[] };
 }
